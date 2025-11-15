@@ -5,22 +5,22 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ReservaPage from './pages/ReservaPage';
-
-// --- 1. Importa el Bouncer y el Dashboard ---
+import MisReservasPage from './pages/MisReservasPage';
+import CheckoutPage from './pages/CheckoutPage'; // Asegúrate de que esta ruta exista
+// --- Imports de Admin ---
 import AdminRoute from './components/AdminRoute';
 import DashboardPage from './pages/admin/DashboardPage';
-// --- ¡AQUÍ FALTABA ESTE IMPORT! ---
 import GestionarSedesPage from './pages/admin/GestionarSedesPage';
+import GestionarCanchasPage from './pages/admin/GestionarCanchasPage'; 
+import GenerarHorariosPage from './pages/admin/GenerarHorariosPage';
 
 // Importa el hook de autenticación
-import { useAuth } from './context/AuthContext.jsx'; // (Asegúrate de que esta ruta sea correcta, ej. ../context/AuthContext.jsx)
+import { useAuth } from './context/AuthContext.jsx'; 
 
 function App() {
-  // Trae el 'user' y la función 'logout' del bolsillo
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  // Función de "Logout" para el botón
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -35,6 +35,11 @@ function App() {
           <Link to="/" className="mr-4 text-xl font-bold hover:text-blue-400">CanchaApp</Link>
           <Link to="/" className="mr-4 hover:text-blue-400">Canchas</Link>
           
+          {/* Enlace a Mis Reservas - AHORA AQUÍ EN LA NAVEGACIÓN */}
+          {user && (
+            <Link to="/mis-reservas" className="mr-4 hover:text-blue-400">Mis Reservas</Link>
+          )}
+
           {user && user.rol === 'admin' && (
             <Link to="/admin" className="mr-4 rounded bg-yellow-500 px-3 py-1 font-bold text-gray-900 hover:bg-yellow-400">
               PANEL ADMIN
@@ -64,22 +69,23 @@ function App() {
 
       {/* ----- Definición de las Rutas ----- */}
       <Routes>
-        {/* --- Rutas Públicas --- */}
+        {/* --- Rutas Públicas (INCLUYE MIS RESERVAS Y CHECKOUT) --- */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/reservar/:id_cancha" element={<ReservaPage />} />
+        <Route path="/checkout/:id_horario" element={<CheckoutPage />} /> 
+        
+        {/* AHORA ES UNA RUTA PÚBLICA NORMAL, FUERA DEL BLOQUE ADMIN */}
+        <Route path="/mis-reservas" element={<MisReservasPage />} /> 
 
         {/* --- Ruta Protegida de Admin --- */}
         <Route path="/admin" element={<AdminRoute />}>
-          {/* La ruta "hija" (índice) es el Dashboard */}
           <Route index element={<DashboardPage />} />
-          
-          {/* --- ¡AQUÍ FALTABA ESTA RUTA! --- */}
           <Route path="gestionar-sedes" element={<GestionarSedesPage />} />
-          {/* Próximamente: <Route path="gestionar-canchas" element={<... />} /> */}
+          <Route path="gestionar-canchas" element={<GestionarCanchasPage />} />
+          <Route path="generar-horarios" element={<GenerarHorariosPage />} />
         </Route>
-        
       </Routes>
     </div>
   )

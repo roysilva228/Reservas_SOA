@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext'; // Para enviar el token
+import { useAuth } from '../context/AuthContext.jsx'; // (Revisa la ruta ../../)
+
+const API_RESERVAS_URL = 'http://127.0.0.1:8002';
 
 // Función para obtener la fecha de "hoy" en formato YYYY-MM-DD
 const getTodayString = () => {
@@ -11,35 +13,31 @@ const getTodayString = () => {
 };
 
 export default function ReservaPage() {
-  // --- Hooks ---
-  const { id_cancha } = useParams(); // Obtiene el "id_cancha" de la URL
-  const { user, token } = useAuth(); // Obtiene el usuario y su token del "bolsillo"
+  const { id_cancha } = useParams();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
 
-  // --- Estados ---
-  const [disponibilidad, setDisponibilidad] = useState([]); // Array de horarios
-  const [selectedDate, setSelectedDate] = useState(getTodayString()); // Calendario
+  const [disponibilidad, setDisponibilidad] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(getTodayString());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // --- Estado para la hora actual y comparación ---
+  const [now, setNow] = useState(new Date()); 
 
   // --- Efecto: Cargar disponibilidad ---
-  // Se ejecuta al cargar la página y cada vez que 'selectedDate' o 'id_cancha' cambian
   useEffect(() => {
     if (!id_cancha || !selectedDate) return;
-
+    
+    setNow(new Date()); // Actualizamos la hora actual al cargar
+    
     const fetchDisponibilidad = async () => {
       setLoading(true);
       setError(null);
       try {
-        // 1. Llama al NUEVO servicio (puerto 8002)
         const response = await axios.get(
-          `http://127.0.0.1:8002/disponibilidad/`,
-          {
-            params: {
-              id_cancha: id_cancha,
-              fecha: selectedDate,
-            },
-          }
+          `${API_RESERVAS_URL}/disponibilidad/`,
+          { params: { id_cancha: id_cancha, fecha: selectedDate } }
         );
         setDisponibilidad(response.data);
       } catch (err) {
@@ -51,9 +49,9 @@ export default function ReservaPage() {
     };
 
     fetchDisponibilidad();
-  }, [id_cancha, selectedDate]); // Dependencias del efecto
+  }, [id_cancha, selectedDate]); 
 
-  // --- Acción: Manejar la reserva ---
+  // --- ¡NUEVO! Acción: Manejar la reserva (BLOQUEA Y REDIRIGE) ---
   const handleReservar = async (id_horario) => {
     if (!user) {
       alert("Debes iniciar sesión para reservar.");
@@ -62,45 +60,47 @@ export default function ReservaPage() {
     }
 
     try {
-      // 2. Llama al endpoint de crear reserva (puerto 8002)
-      // ¡¡IMPORTANTE: Enviamos el token en los headers!!
+      // 1. Llamamos al endpoint de BLOQUEO (puerto 8002)
+      // Esto congela el horario con estado 'en_checkout'
       const response = await axios.post(
-        'http://127.0.0.1:8002/reservas/crear',
-        {
-          id_horario: id_horario, // El 'body' que espera la API
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`, // El "pase VIP"
-          },
-        }
+        `${API_RESERVAS_URL}/reservas/bloquear-horario`,
+        { id_horario: id_horario },
+        { headers: { 'Authorization': `Bearer ${token}` } }
       );
-
-      // ¡Éxito!
-      alert(`¡Reserva confirmada! (ID: ${response.data.id_reserva})`);
-
-      // 3. Refrescar la lista de disponibilidad
-      // Cambiamos el estado del horario reservado a "reservado"
+      
+      // 2. Si el bloqueo es exitoso, actualizamos la UI a 'en_checkout'
       setDisponibilidad((prev) =>
         prev.map((horario) =>
           horario.id_horario === id_horario
-            ? { ...horario, estado: 'reservado' }
+            ? { ...horario, estado: 'en_checkout' } // ¡Cambiamos a estado temporal!
             : horario
         )
       );
 
+      // 3. Redirigimos al Checkout
+      alert(`Horario bloqueado temporalmente. Serás dirigido al Checkout para pagar.`);
+      navigate(`/checkout/${id_horario}`); // Redirige a la nueva ruta
+
     } catch (err) {
-      console.error("Error al crear la reserva:", err);
-      // Mostramos el error que nos da el backend
-      if (err.response && err.response.data && err.response.data.detail) {
-        setError(err.response.data.detail);
-      } else {
-        setError("No se pudo completar la reserva.");
-      }
+      console.error("Error al intentar bloquear:", err);
+      // Si el servidor falla (400 - ya reservado), mostramos el error
+      setError(err.response?.data?.detail || "Error: Este horario ya no está disponible.");
+      // Opcional: Forzar recarga para mostrar el estado real (reservado/en_checkout)
+      // fetchDisponibilidad(); 
     }
   };
 
-  // --- Renderizado de la Página ---
+  // --- Función de Lógica de Deshabilitación (isHorarioPasado) ---
+  const isHorarioPasado = (horario) => {
+    const esHoy = selectedDate === getTodayString();
+    if (!esHoy) return false; 
+    
+    const horaInicioBloque = horario.hora_inicio;
+    const horaActual = now.toTimeString().split(' ')[0];
+    
+    return horaInicioBloque < horaActual;
+  };
+
   return (
     <div className="container mx-auto max-w-4xl p-6">
       <h1 className="text-4xl font-bold text-gray-800 mb-4">
@@ -124,7 +124,7 @@ export default function ReservaPage() {
           className="w-full md:w-1/2 p-3 border border-gray-300 rounded-lg shadow-sm"
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
-          min={getTodayString()} // No se pueden reservar días pasados
+          min={getTodayString()}
         />
       </div>
 
@@ -144,26 +144,49 @@ export default function ReservaPage() {
 
         {/* La "Agenda" */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {disponibilidad.map((horario) => (
-            <button
-              key={horario.id_horario}
-              onClick={() => handleReservar(horario.id_horario)}
-              disabled={horario.estado !== 'disponible'} // Deshabilitado si no está disponible
-              className={`
-                p-4 rounded-lg font-bold text-center text-white
-                ${horario.estado === 'disponible' 
-                  ? 'bg-green-500 hover:bg-green-600 transform hover:scale-105' 
-                  : 'bg-red-400 opacity-50 cursor-not-allowed'
-                }
-                transition-all duration-200
-              `}
-            >
-              {horario.hora_inicio.slice(0, 5)} {/* Muestra ej. 19:00 */}
-              <span className="block text-xs font-normal">
-                {horario.estado === 'disponible' ? 'Disponible' : 'Reservado'}
-              </span>
-            </button>
-          ))}
+          {disponibilidad.map((horario) => {
+            
+            // --- LÓGICA DE ESTADO ---
+            const estaReservado = horario.estado === 'reservado';
+            const estaEnCheckout = horario.estado === 'en_checkout';
+            const estaPasado = isHorarioPasado(horario);
+            const estaDeshabilitado = estaReservado || estaEnCheckout || estaPasado;
+            
+            let label = 'Disponible';
+            let colorClass = 'bg-green-500 hover:bg-green-600';
+
+            if (estaReservado) {
+              label = 'Reservado';
+              colorClass = 'bg-red-600 opacity-50';
+            } else if (estaEnCheckout) {
+              label = 'Pagando...';
+              colorClass = 'bg-yellow-500 opacity-70';
+            } else if (estaPasado) {
+              label = 'Pasado';
+              colorClass = 'bg-red-400 opacity-30';
+            }
+
+            return (
+              <button
+                key={horario.id_horario}
+                onClick={() => handleReservar(horario.id_horario)}
+                disabled={estaDeshabilitado} 
+                className={`
+                  p-4 rounded-lg font-bold text-center text-white
+                  ${!estaDeshabilitado 
+                    ? `${colorClass} transform hover:scale-105` 
+                    : `${colorClass} cursor-not-allowed`
+                  }
+                  transition-all duration-200
+                `}
+              >
+                {horario.hora_inicio.slice(0, 5)} {/* Muestra ej. 19:00 */}
+                <span className="block text-xs font-normal">
+                  {label}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

@@ -13,8 +13,7 @@ export default function DashboardPage() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
-        {/* --- ¡AQUÍ ESTÁ LA CORRECCIÓN! --- */}
-        {/* Convertimos la tarjeta en un enlace a la nueva página */}
+        {/* Tarjeta 1 (Ya estaba bien) */}
         <Link 
           to="/admin/gestionar-sedes" 
           className="block bg-white p-6 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 transition-colors"
@@ -22,17 +21,26 @@ export default function DashboardPage() {
           <h2 className="text-2xl font-semibold mb-2 text-blue-600">Gestionar Sedes</h2>
           <p>Crear, editar o eliminar sedes.</p>
         </Link>
-        {/* --- FIN DE LA CORRECCIÓN --- */}
 
-        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-          <h2 className="text-2xl font-semibold mb-2">Gestionar Canchas</h2>
+        {/* Tarjeta 2 (Ya estaba bien) */}
+        <Link 
+          to="/admin/gestionar-canchas" 
+          className="block bg-white p-6 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 transition-colors"
+        >
+          <h2 className="text-2xl font-semibold mb-2 text-blue-600">Gestionar Canchas</h2>
           <p>Añadir nuevas canchas a las sedes.</p>
-        </div>
+        </Link>
         
-        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-          <h2 className="text-2xl font-semibold mb-2">Generar Horarios</h2>
+        {/* --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! --- */}
+        {/* Convertimos la Tarjeta 3 en un enlace */}
+        <Link 
+          to="/admin/generar-horarios" 
+          className="block bg-white p-6 rounded-lg shadow-md border border-gray-200 hover:bg-gray-50 transition-colors"
+        >
+          <h2 className="text-2xl font-semibold mb-2 text-blue-600">Generar Horarios</h2>
           <p>Abrir la agenda de disponibilidad.</p>
-        </div>
+        </Link>
+        {/* --- FIN DE LA CORRECCIÓN --- */}
       </div>
     </div>
   );

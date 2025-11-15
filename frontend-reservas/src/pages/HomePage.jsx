@@ -15,17 +15,27 @@ export default function HomePage() {
 
   // --- Efecto para cargar sedes y canchas al iniciar ---
   useEffect(() => {
+    // Definimos una URL base para la API de canchas
+    const API_URL = 'http://127.0.0.1:8001';
+
     const fetchSedesAndCanchas = async () => {
       setLoading(true);
       setError(null);
       try {
         // 1. Cargar Sedes
-        const sedesResponse = await axios.get('http://127.0.0.1:8001/sedes/');
+        const sedesResponse = await axios.get(`${API_URL}/sedes/`);
         setSedes(sedesResponse.data);
 
-        // 2. Cargar Canchas (sin filtrar inicialmente)
-        // La API de Canchas ya puede recibir 'id_sede'
-        const canchasResponse = await axios.get(`http://127.0.0.1:8001/canchas/${selectedSede ? `?id_sede=${selectedSede}` : ''}`);
+        // 2. Cargar Canchas (con o sin filtro)
+        const params = {};
+        if (selectedSede) {
+          params.id_sede = selectedSede;
+        }
+        
+        // --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ---
+        // Añadimos la barra "/" al final de /canchas
+        // y pasamos los 'params' a axios para que él construya la URL
+        const canchasResponse = await axios.get(`${API_URL}/canchas/`, { params });
         setCanchas(canchasResponse.data);
 
       } catch (err) {
@@ -146,13 +156,13 @@ export default function HomePage() {
                 </div>
                 {/* Botón de Reserva (solo si está logueado) */}
                {user && (
-  <Link
-    to={`/reservar/${cancha.id_cancha}`} // <-- ¡LA MAGIA! Enlace dinámico
-    className="mt-6 block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 ease-in-out transform hover:scale-105"
-  >
-    Reservar Ahora
-  </Link>
-)}
+                  <Link
+                    to={`/reservar/${cancha.id_cancha}`} // <-- ¡LA MAGIA! Enlace dinámico
+                    className="mt-6 block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 ease-in-out transform hover:scale-105"
+                  >
+                    Reservar Ahora
+                  </Link>
+                )}
               </div>
             </div>
           ))}
