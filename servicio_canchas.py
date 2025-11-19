@@ -1,14 +1,21 @@
 # --- IMPORTS ---
 import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status
+import shutil
+import os
+import uuid
+from typing import List, Optional
+
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from sqlalchemy import create_engine, Column, Integer, String, Text, DECIMAL, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
-from pydantic import BaseModel, Field
-from typing import List, Optional
 from sqlalchemy.ext.declarative import declarative_base
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from pydantic import BaseModel, Field
 from jose import JWTError, jwt
-from fastapi.middleware.cors import CORSMiddleware
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 DATABASE_URL = "mysql+pymysql://root:root@localhost:3306/reservas_canchas_soa"
@@ -55,7 +62,6 @@ class SedePublica(BaseModel):
     class Config:
         from_attributes = True
 
-# --- ¡¡MODELOS DE ADMIN QUE FALTABAN!! ---
 class SedeCreate(BaseModel):
     nombre: str
     direccion: str
@@ -67,7 +73,6 @@ class SedeUpdate(BaseModel):
     direccion: Optional[str] = None
     distrito: Optional[str] = None
     url_foto_sede: Optional[str] = None
-# --- FIN DE LOS MODELOS ---
 
 class CanchaPublica(BaseModel):
     id_cancha: int
@@ -89,12 +94,21 @@ class CanchaCreate(BaseModel):
     url_foto: Optional[str] = None
     id_sede_fk: Optional[int] = None
 
+class CanchaUpdate(BaseModel):
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    tipo_superficie: Optional[str] = None
+    ubicacion: Optional[str] = None
+    precio_hora: Optional[float] = None
+    url_foto: Optional[str] = None
+    id_sede_fk: Optional[int] = None
+
 class TokenData(BaseModel):
     email: str
     id: int
     rol: str
 
-# --- DEPENDENCIAS (get_db, get_current_user, get_current_admin) ---
+# --- DEPENDENCIAS ---
 def get_db():
     db = SessionLocal()
     try:
@@ -102,7 +116,7 @@ def get_db():
     finally:
         db.close()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme), db: Session = Depends(get_db)):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     token = credentials.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -129,13 +143,13 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
         )
     return current_user
 
-# --- INICIALIZAR LA APLICACIÓN FASTAPI ---
+# --- INICIALIZAR APP ---
 app = FastAPI(
     title="Servicio de Canchas",
-    description="API para gestionar la información de las canchas."
+    description="API para gestionar la información de las canchas e imágenes."
 )
 
-# --- Configuración de CORS ---
+# --- CONFIGURACIÓN CORS ---
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -144,34 +158,60 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],       # ¡Permite PUT, POST, DELETE!
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Evento de Inicio ---
+# --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (IMÁGENES) ---
+# Crea la carpeta 'static/imagenes' si no existe para guardar las fotos
+IMAGEDIR = "static/imagenes"
+os.makedirs(IMAGEDIR, exist_ok=True)
+
+# Monta la carpeta para que las imágenes sean accesibles vía URL
+# Ejemplo: http://127.0.0.1:8001/static/imagenes/mi_foto.jpg
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --- EVENTO DE INICIO ---
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
 
 # --- ENDPOINTS DE LA API ---
 
+# --- 1. NUEVO ENDPOINT DE SUBIDA DE IMÁGENES ---
+@app.post("/subir-imagen/")
+async def subir_imagen(file: UploadFile = File(...)):
+    """
+    Recibe un archivo de imagen, lo guarda localmente y devuelve la URL pública.
+    """
+    # Generar nombre único para evitar sobrescribir archivos con el mismo nombre
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    path_destino = f"{IMAGEDIR}/{unique_filename}"
+    
+    # Guardar el archivo en el disco
+    with open(path_destino, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    # Construir la URL completa
+    # NOTA: Ajustar el dominio/puerto si despliegas en producción
+    url_final = f"http://127.0.0.1:8001/{path_destino}"
+    
+    return {"url": url_final}
+
+
 # --- CRUD de Sedes ---
+
 @app.get("/sedes/", response_model=List[SedePublica])
 def listar_sedes(db: Session = Depends(get_db)):
-    """ Endpoint PÚBLICO para listar todas las Sedes. """
-    sedes = db.query(Sede).all()
-    return sedes
-
-# --- ¡¡ENDPOINTS DE ADMIN QUE FALTABAN!! ---
+    return db.query(Sede).all()
 
 @app.post("/sedes/", response_model=SedePublica, status_code=status.HTTP_201_CREATED)
 def crear_sede(
     sede: SedeCreate,
     db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin) # <-- PROTEGIDO!
+    admin_user: TokenData = Depends(get_current_admin)
 ):
-    """ Endpoint PROTEGIDO (Solo Admin) para crear una nueva sede. """
-    # Corregido a .model_dump() para Pydantic V2
     db_sede = Sede(**sede.model_dump())
     db.add(db_sede)
     db.commit()
@@ -183,14 +223,12 @@ def actualizar_sede(
     id_sede: int,
     sede: SedeUpdate,
     db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin) # <-- PROTEGIDO!
+    admin_user: TokenData = Depends(get_current_admin)
 ):
-    """ Endpoint PROTEGIDO (Solo Admin) para actualizar una sede. """
     db_sede = db.query(Sede).filter(Sede.id_sede == id_sede).first()
     if not db_sede:
         raise HTTPException(status_code=404, detail="Sede no encontrada")
     
-    # Corregido a .model_dump() para Pydantic V2
     update_data = sede.model_dump(exclude_unset=True) 
     for key, value in update_data.items():
         setattr(db_sede, key, value)
@@ -203,9 +241,8 @@ def actualizar_sede(
 def eliminar_sede(
     id_sede: int,
     db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin) # <-- PROTEGIDO!
+    admin_user: TokenData = Depends(get_current_admin)
 ):
-    """ Endpoint PROTEGIDO (Solo Admin) para eliminar una sede. """
     db_sede = db.query(Sede).filter(Sede.id_sede == id_sede).first()
     if not db_sede:
         raise HTTPException(status_code=404, detail="Sede no encontrada")
@@ -214,10 +251,9 @@ def eliminar_sede(
     db.commit()
     return None
 
-# --- FIN DE LOS ENDPOINTS QUE FALTABAN ---
-
 
 # --- CRUD de Canchas ---
+
 @app.get("/canchas/", response_model=List[CanchaPublica])
 def listar_canchas(
     skip: int = 0, 
@@ -246,14 +282,46 @@ def crear_cancha(
     admin_user: TokenData = Depends(get_current_admin)
 ):
     print(f"Admin {admin_user.email} está creando una cancha.")
-    # Convertimos el modelo Pydantic a un diccionario
     cancha_data = cancha.model_dump()
-    # Creamos el objeto Cancha (SQLAlchemy) con los datos
     db_cancha = Cancha(**cancha_data)
     db.add(db_cancha)
     db.commit()
     db.refresh(db_cancha)
     return db_cancha
+
+@app.put("/canchas/{id_cancha}", response_model=CanchaPublica)
+def actualizar_cancha(
+    id_cancha: int,
+    cancha: CanchaUpdate,
+    db: Session = Depends(get_db),
+    admin_user: TokenData = Depends(get_current_admin)
+):
+    db_cancha = db.query(Cancha).filter(Cancha.id_cancha == id_cancha).first()
+    if not db_cancha:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+    
+    # Actualizamos solo los campos que vienen en la petición
+    update_data = cancha.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_cancha, key, value)
+        
+    db.commit()
+    db.refresh(db_cancha)
+    return db_cancha
+
+@app.delete("/canchas/{id_cancha}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_cancha(
+    id_cancha: int,
+    db: Session = Depends(get_db),
+    admin_user: TokenData = Depends(get_current_admin)
+):
+    db_cancha = db.query(Cancha).filter(Cancha.id_cancha == id_cancha).first()
+    if not db_cancha:
+        raise HTTPException(status_code=404, detail="Cancha no encontrada")
+        
+    db.delete(db_cancha)
+    db.commit()
+    return None
 
 # --- FUNCIÓN PARA CORRER ---
 if __name__ == "__main__":
