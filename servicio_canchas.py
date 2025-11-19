@@ -3,6 +3,8 @@ import uvicorn
 import shutil
 import os
 import uuid
+import random # Para la IA simulada
+import asyncio # Para simular tiempo de espera
 from typing import List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
@@ -103,6 +105,11 @@ class CanchaUpdate(BaseModel):
     url_foto: Optional[str] = None
     id_sede_fk: Optional[int] = None
 
+class GenerarDescripcionRequest(BaseModel):
+    nombre: str
+    tipo_superficie: str
+    sede: str
+
 class TokenData(BaseModel):
     email: str
     id: int
@@ -153,6 +160,8 @@ app = FastAPI(
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -163,12 +172,8 @@ app.add_middleware(
 )
 
 # --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (IMÁGENES) ---
-# Crea la carpeta 'static/imagenes' si no existe para guardar las fotos
 IMAGEDIR = "static/imagenes"
 os.makedirs(IMAGEDIR, exist_ok=True)
-
-# Monta la carpeta para que las imágenes sean accesibles vía URL
-# Ejemplo: http://127.0.0.1:8001/static/imagenes/mi_foto.jpg
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- EVENTO DE INICIO ---
@@ -178,40 +183,42 @@ def on_startup():
 
 # --- ENDPOINTS DE LA API ---
 
-# --- 1. NUEVO ENDPOINT DE SUBIDA DE IMÁGENES ---
+# --- ENDPOINT DE IA (SIMULADO) ---
+@app.post("/canchas/generar-descripcion-ia")
+async def generar_descripcion_ia(datos: GenerarDescripcionRequest):
+    """
+    Simula una llamada a una IA generativa para crear una descripción atractiva.
+    """
+    # Simulamos que la IA piensa un poco (UX)
+    await asyncio.sleep(1.5) 
+    
+    templates = [
+        f"¡Ven a jugar a {datos.nombre}! La mejor cancha de {datos.tipo_superficie} en {datos.sede}. Ideal para partidos intensos con tus amigos.",
+        f"Disfruta del deporte en {datos.sede}. Nuestra cancha {datos.nombre} cuenta con {datos.tipo_superficie} de alta calidad y excelente iluminación.",
+        f"Reserva {datos.nombre} y vive la experiencia pro. Superficie de {datos.tipo_superficie} perfecta para torneos o pichangas de fin de semana.",
+        f"¿Buscas dónde jugar? {datos.nombre} te espera en {datos.sede}. {datos.tipo_superficie} en perfecto estado para tu mejor rendimiento."
+    ]
+    
+    return {"descripcion": random.choice(templates)}
+
+
 @app.post("/subir-imagen/")
 async def subir_imagen(file: UploadFile = File(...)):
-    """
-    Recibe un archivo de imagen, lo guarda localmente y devuelve la URL pública.
-    """
-    # Generar nombre único para evitar sobrescribir archivos con el mismo nombre
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     path_destino = f"{IMAGEDIR}/{unique_filename}"
-    
-    # Guardar el archivo en el disco
     with open(path_destino, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-        
-    # Construir la URL completa
-    # NOTA: Ajustar el dominio/puerto si despliegas en producción
     url_final = f"http://127.0.0.1:8001/{path_destino}"
-    
     return {"url": url_final}
 
-
 # --- CRUD de Sedes ---
-
 @app.get("/sedes/", response_model=List[SedePublica])
 def listar_sedes(db: Session = Depends(get_db)):
     return db.query(Sede).all()
 
 @app.post("/sedes/", response_model=SedePublica, status_code=status.HTTP_201_CREATED)
-def crear_sede(
-    sede: SedeCreate,
-    db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin)
-):
+def crear_sede(sede: SedeCreate, db: Session = Depends(get_db), admin_user: TokenData = Depends(get_current_admin)):
     db_sede = Sede(**sede.model_dump())
     db.add(db_sede)
     db.commit()
@@ -219,48 +226,29 @@ def crear_sede(
     return db_sede
 
 @app.put("/sedes/{id_sede}", response_model=SedePublica)
-def actualizar_sede(
-    id_sede: int,
-    sede: SedeUpdate,
-    db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin)
-):
+def actualizar_sede(id_sede: int, sede: SedeUpdate, db: Session = Depends(get_db), admin_user: TokenData = Depends(get_current_admin)):
     db_sede = db.query(Sede).filter(Sede.id_sede == id_sede).first()
     if not db_sede:
         raise HTTPException(status_code=404, detail="Sede no encontrada")
-    
     update_data = sede.model_dump(exclude_unset=True) 
     for key, value in update_data.items():
         setattr(db_sede, key, value)
-        
     db.commit()
     db.refresh(db_sede)
     return db_sede
 
 @app.delete("/sedes/{id_sede}", status_code=status.HTTP_204_NO_CONTENT)
-def eliminar_sede(
-    id_sede: int,
-    db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin)
-):
+def eliminar_sede(id_sede: int, db: Session = Depends(get_db), admin_user: TokenData = Depends(get_current_admin)):
     db_sede = db.query(Sede).filter(Sede.id_sede == id_sede).first()
     if not db_sede:
         raise HTTPException(status_code=404, detail="Sede no encontrada")
-        
     db.delete(db_sede)
     db.commit()
     return None
 
-
 # --- CRUD de Canchas ---
-
 @app.get("/canchas/", response_model=List[CanchaPublica])
-def listar_canchas(
-    skip: int = 0, 
-    limit: int = 100, 
-    id_sede: Optional[int] = None, 
-    db: Session = Depends(get_db)
-):
+def listar_canchas(skip: int = 0, limit: int = 100, id_sede: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(Cancha).options(joinedload(Cancha.sede))
     if id_sede:
         query = query.filter(Cancha.id_sede_fk == id_sede)
@@ -269,19 +257,13 @@ def listar_canchas(
 
 @app.get("/canchas/{id_cancha}", response_model=CanchaPublica)
 def obtener_cancha(id_cancha: int, db: Session = Depends(get_db)):
-    cancha = db.query(Cancha).options(joinedload(Cancha.sede))\
-        .filter(Cancha.id_cancha == id_cancha).first()
+    cancha = db.query(Cancha).options(joinedload(Cancha.sede)).filter(Cancha.id_cancha == id_cancha).first()
     if cancha is None:
         raise HTTPException(status_code=404, detail="Cancha no encontrada")
     return cancha
 
 @app.post("/canchas/", response_model=CanchaPublica, status_code=status.HTTP_201_CREATED)
-def crear_cancha(
-    cancha: CanchaCreate, 
-    db: Session = Depends(get_db), 
-    admin_user: TokenData = Depends(get_current_admin)
-):
-    print(f"Admin {admin_user.email} está creando una cancha.")
+def crear_cancha(cancha: CanchaCreate, db: Session = Depends(get_db), admin_user: TokenData = Depends(get_current_admin)):
     cancha_data = cancha.model_dump()
     db_cancha = Cancha(**cancha_data)
     db.add(db_cancha)
@@ -290,35 +272,22 @@ def crear_cancha(
     return db_cancha
 
 @app.put("/canchas/{id_cancha}", response_model=CanchaPublica)
-def actualizar_cancha(
-    id_cancha: int,
-    cancha: CanchaUpdate,
-    db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin)
-):
+def actualizar_cancha(id_cancha: int, cancha: CanchaUpdate, db: Session = Depends(get_db), admin_user: TokenData = Depends(get_current_admin)):
     db_cancha = db.query(Cancha).filter(Cancha.id_cancha == id_cancha).first()
     if not db_cancha:
         raise HTTPException(status_code=404, detail="Cancha no encontrada")
-    
-    # Actualizamos solo los campos que vienen en la petición
     update_data = cancha.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_cancha, key, value)
-        
     db.commit()
     db.refresh(db_cancha)
     return db_cancha
 
 @app.delete("/canchas/{id_cancha}", status_code=status.HTTP_204_NO_CONTENT)
-def eliminar_cancha(
-    id_cancha: int,
-    db: Session = Depends(get_db),
-    admin_user: TokenData = Depends(get_current_admin)
-):
+def eliminar_cancha(id_cancha: int, db: Session = Depends(get_db), admin_user: TokenData = Depends(get_current_admin)):
     db_cancha = db.query(Cancha).filter(Cancha.id_cancha == id_cancha).first()
     if not db_cancha:
         raise HTTPException(status_code=404, detail="Cancha no encontrada")
-        
     db.delete(db_cancha)
     db.commit()
     return None

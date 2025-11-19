@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext.jsx'; // (Revisa la ruta ../../)
+import { useAuth } from '../context/AuthContext.jsx';
 
 const API_RESERVAS_URL = 'http://127.0.0.1:8002';
+const API_CANCHAS_URL = 'http://127.0.0.1:8001'; // Agregamos esto para traer info de la cancha
 
 // Función para obtener la fecha de "hoy" en formato YYYY-MM-DD
 const getTodayString = () => {
@@ -17,23 +18,36 @@ export default function ReservaPage() {
   const { user, token } = useAuth();
   const navigate = useNavigate();
 
+  // Estados
+  const [canchaInfo, setCanchaInfo] = useState(null); // Para guardar nombre, foto, precio
   const [disponibilidad, setDisponibilidad] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getTodayString());
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // --- Estado para la hora actual y comparación ---
   const [now, setNow] = useState(new Date()); 
 
-  // --- Efecto: Cargar disponibilidad ---
+  // --- 1. Cargar Información de la Cancha (Nombre, Foto, Precio) ---
+  useEffect(() => {
+    const fetchCanchaInfo = async () => {
+        try {
+            const res = await axios.get(`${API_CANCHAS_URL}/canchas/${id_cancha}`);
+            setCanchaInfo(res.data);
+        } catch (err) {
+            console.error("Error cargando info de cancha:", err);
+            setError("No pudimos encontrar los detalles de la cancha.");
+        }
+    };
+    fetchCanchaInfo();
+  }, [id_cancha]);
+
+  // --- 2. Cargar Disponibilidad (Horarios) ---
   useEffect(() => {
     if (!id_cancha || !selectedDate) return;
     
-    setNow(new Date()); // Actualizamos la hora actual al cargar
+    setNow(new Date()); 
     
     const fetchDisponibilidad = async () => {
       setLoading(true);
-      setError(null);
       try {
         const response = await axios.get(
           `${API_RESERVAS_URL}/disponibilidad/`,
@@ -42,7 +56,7 @@ export default function ReservaPage() {
         setDisponibilidad(response.data);
       } catch (err) {
         console.error("Error cargando disponibilidad:", err);
-        setError("No se pudo cargar la disponibilidad para esta fecha.");
+        // No mostramos error fatal, solo lista vacía si falla
       } finally {
         setLoading(false);
       }
@@ -51,7 +65,7 @@ export default function ReservaPage() {
     fetchDisponibilidad();
   }, [id_cancha, selectedDate]); 
 
-  // --- ¡NUEVO! Acción: Manejar la reserva (BLOQUEA Y REDIRIGE) ---
+  // --- Acción: Reservar ---
   const handleReservar = async (id_horario) => {
     if (!user) {
       alert("Debes iniciar sesión para reservar.");
@@ -60,133 +74,148 @@ export default function ReservaPage() {
     }
 
     try {
-      // 1. Llamamos al endpoint de BLOQUEO (puerto 8002)
-      // Esto congela el horario con estado 'en_checkout'
-      const response = await axios.post(
+      await axios.post(
         `${API_RESERVAS_URL}/reservas/bloquear-horario`,
         { id_horario: id_horario },
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
       
-      // 2. Si el bloqueo es exitoso, actualizamos la UI a 'en_checkout'
+      // Actualizar UI optimista
       setDisponibilidad((prev) =>
         prev.map((horario) =>
-          horario.id_horario === id_horario
-            ? { ...horario, estado: 'en_checkout' } // ¡Cambiamos a estado temporal!
-            : horario
+          horario.id_horario === id_horario ? { ...horario, estado: 'en_checkout' } : horario
         )
       );
 
-      // 3. Redirigimos al Checkout
-      alert(`Horario bloqueado temporalmente. Serás dirigido al Checkout para pagar.`);
-      navigate(`/checkout/${id_horario}`); // Redirige a la nueva ruta
+      navigate(`/checkout/${id_horario}`); 
 
     } catch (err) {
-      console.error("Error al intentar bloquear:", err);
-      // Si el servidor falla (400 - ya reservado), mostramos el error
-      setError(err.response?.data?.detail || "Error: Este horario ya no está disponible.");
-      // Opcional: Forzar recarga para mostrar el estado real (reservado/en_checkout)
-      // fetchDisponibilidad(); 
+      alert(err.response?.data?.detail || "Error: Este horario ya no está disponible.");
     }
   };
 
-  // --- Función de Lógica de Deshabilitación (isHorarioPasado) ---
+  // --- Lógica de validación de hora ---
   const isHorarioPasado = (horario) => {
     const esHoy = selectedDate === getTodayString();
     if (!esHoy) return false; 
-    
     const horaInicioBloque = horario.hora_inicio;
     const horaActual = now.toTimeString().split(' ')[0];
-    
     return horaInicioBloque < horaActual;
   };
 
+  if (error) return <div className="p-10 text-center text-red-500 font-bold">{error}</div>;
+  if (!canchaInfo && loading) return <div className="p-10 text-center text-gray-500">Cargando experiencia...</div>;
+
   return (
-    <div className="container mx-auto max-w-4xl p-6">
-      <h1 className="text-4xl font-bold text-gray-800 mb-4">
-        Reservar Cancha (ID: {id_cancha})
-      </h1>
-      <p className="text-xl text-gray-600 mb-8">
-        Selecciona la fecha y la hora que deseas reservar.
-      </p>
-
-      {/* 1. Selector de Fecha */}
-      <div className="mb-6">
-        <label
-          htmlFor="fecha-reserva"
-          className="block text-lg font-medium text-gray-700 mb-2"
-        >
-          Selecciona una fecha:
-        </label>
-        <input
-          type="date"
-          id="fecha-reserva"
-          className="w-full md:w-1/2 p-3 border border-gray-300 rounded-lg shadow-sm"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          min={getTodayString()}
-        />
-      </div>
-
-      {/* 2. Lista de Horarios */}
-      <div className="mt-8">
-        <h2 className="text-2xl font-semibold text-gray-700 mb-4">
-          Horarios Disponibles
-        </h2>
-        {loading && <p className="text-blue-500">Cargando horarios...</p>}
-        {error && <p className="text-red-500">{error}</p>}
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto">
         
-        {!loading && !error && disponibilidad.length === 0 && (
-          <p className="text-gray-500">
-            No hay horarios cargados para este día. Por favor, selecciona otra fecha.
-          </p>
-        )}
-
-        {/* La "Agenda" */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {disponibilidad.map((horario) => {
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            // --- LÓGICA DE ESTADO ---
-            const estaReservado = horario.estado === 'reservado';
-            const estaEnCheckout = horario.estado === 'en_checkout';
-            const estaPasado = isHorarioPasado(horario);
-            const estaDeshabilitado = estaReservado || estaEnCheckout || estaPasado;
-            
-            let label = 'Disponible';
-            let colorClass = 'bg-green-500 hover:bg-green-600';
+            {/* --- COLUMNA IZQUIERDA: INFO CANCHA --- */}
+            <div className="lg:col-span-1">
+                {canchaInfo && (
+                    <div className="bg-white rounded-2xl shadow-xl overflow-hidden sticky top-6">
+                        <div className="h-48 overflow-hidden relative">
+                             <img 
+                                src={canchaInfo.url_foto || 'https://via.placeholder.com/400x250?text=Cancha'} 
+                                alt={canchaInfo.nombre} 
+                                className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
+                            />
+                            <div className="absolute top-0 right-0 bg-blue-600 text-white px-3 py-1 rounded-bl-lg font-bold text-sm">
+                                {canchaInfo.tipo_superficie}
+                            </div>
+                        </div>
+                        <div className="p-6">
+                            <h2 className="text-2xl font-extrabold text-gray-800 mb-2">{canchaInfo.nombre}</h2>
+                            <p className="text-gray-500 text-sm mb-4 flex items-center gap-2">
+                                <span>📍</span> {canchaInfo.sede ? canchaInfo.sede.nombre : 'Sede Principal'}
+                            </p>
+                            <p className="text-gray-600 text-sm mb-6 italic">
+                                "{canchaInfo.descripcion || 'La mejor cancha para tu partido.'}"
+                            </p>
+                            <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
+                                <span className="text-sm text-gray-400 font-medium uppercase">Precio x Hora</span>
+                                <span className="text-3xl font-bold text-green-600">S/. {canchaInfo.precio_hora}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
 
-            if (estaReservado) {
-              label = 'Reservado';
-              colorClass = 'bg-red-600 opacity-50';
-            } else if (estaEnCheckout) {
-              label = 'Pagando...';
-              colorClass = 'bg-yellow-500 opacity-70';
-            } else if (estaPasado) {
-              label = 'Pasado';
-              colorClass = 'bg-red-400 opacity-30';
-            }
+            {/* --- COLUMNA DERECHA: CALENDARIO Y HORARIOS --- */}
+            <div className="lg:col-span-2 space-y-6">
+                
+                {/* Selector de Fecha */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800">Selecciona una fecha</h3>
+                        <p className="text-sm text-gray-500">Busca disponibilidad para tu partido</p>
+                    </div>
+                    <input
+                        type="date"
+                        className="block w-full sm:w-auto px-4 py-2 rounded-lg border-gray-300 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        min={getTodayString()}
+                    />
+                </div>
 
-            return (
-              <button
-                key={horario.id_horario}
-                onClick={() => handleReservar(horario.id_horario)}
-                disabled={estaDeshabilitado} 
-                className={`
-                  p-4 rounded-lg font-bold text-center text-white
-                  ${!estaDeshabilitado 
-                    ? `${colorClass} transform hover:scale-105` 
-                    : `${colorClass} cursor-not-allowed`
-                  }
-                  transition-all duration-200
-                `}
-              >
-                {horario.hora_inicio.slice(0, 5)} {/* Muestra ej. 19:00 */}
-                <span className="block text-xs font-normal">
-                  {label}
-                </span>
-              </button>
-            )
-          })}
+                {/* Grilla de Horarios */}
+                <div className="bg-white p-8 rounded-2xl shadow-lg">
+                    <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">
+                        Horarios Disponibles para el <span className="text-blue-600">{selectedDate}</span>
+                    </h3>
+
+                    {loading ? (
+                        <div className="py-10 text-center text-gray-400 animate-pulse">Buscando espacios libres...</div>
+                    ) : disponibilidad.length === 0 ? (
+                        <div className="py-10 text-center">
+                            <p className="text-gray-400 text-lg">😕 No hay horarios disponibles para esta fecha.</p>
+                            <button onClick={() => setSelectedDate(getTodayString())} className="text-blue-500 text-sm mt-2 hover:underline">Ver hoy</button>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            {disponibilidad.map((horario) => {
+                                const reservado = horario.estado === 'reservado';
+                                const checkout = horario.estado === 'en_checkout';
+                                const pasado = isHorarioPasado(horario);
+                                const disabled = reservado || checkout || pasado;
+
+                                return (
+                                    <button
+                                        key={horario.id_horario}
+                                        onClick={() => handleReservar(horario.id_horario)}
+                                        disabled={disabled}
+                                        className={`
+                                            relative group py-3 px-4 rounded-xl border-2 transition-all duration-200 flex flex-col items-center justify-center
+                                            ${disabled 
+                                                ? 'bg-gray-50 border-gray-100 cursor-not-allowed opacity-60' 
+                                                : 'bg-white border-blue-100 hover:border-blue-500 hover:shadow-md hover:-translate-y-1'
+                                            }
+                                        `}
+                                    >
+                                        <span className={`text-lg font-bold ${disabled ? 'text-gray-400' : 'text-gray-800 group-hover:text-blue-600'}`}>
+                                            {horario.hora_inicio.slice(0, 5)}
+                                        </span>
+                                        
+                                        {/* Etiqueta de Estado */}
+                                        <span className={`text-[10px] font-bold uppercase mt-1 px-2 py-0.5 rounded-full
+                                            ${!disabled ? 'bg-green-100 text-green-700' : 
+                                              pasado ? 'bg-gray-200 text-gray-500' :
+                                              reservado ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}
+                                        `}>
+                                            {!disabled ? 'Disponible' : 
+                                              pasado ? 'Finalizado' :
+                                              reservado ? 'Ocupado' : 'En Proceso'}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
       </div>
     </div>

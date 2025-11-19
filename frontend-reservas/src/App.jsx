@@ -6,7 +6,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ReservaPage from './pages/ReservaPage';
 import MisReservasPage from './pages/MisReservasPage';
-import CheckoutPage from './pages/CheckoutPage'; // Asegúrate de que esta ruta exista
+import CheckoutPage from './pages/CheckoutPage'; 
 // --- Imports de Admin ---
 import AdminRoute from './components/AdminRoute';
 import DashboardPage from './pages/admin/DashboardPage';
@@ -14,7 +14,6 @@ import GestionarSedesPage from './pages/admin/GestionarSedesPage';
 import GestionarCanchasPage from './pages/admin/GestionarCanchasPage'; 
 import GenerarHorariosPage from './pages/admin/GenerarHorariosPage';
 
-// Importa el hook de autenticación
 import { useAuth } from './context/AuthContext.jsx'; 
 
 function App() {
@@ -28,55 +27,79 @@ function App() {
 
   return (
     <div>
-      {/* ----- Menú de Navegación Inteligente ----- */}
-      <nav className="flex items-center justify-between bg-gray-800 p-4 text-white">
-        {/* Lado Izquierdo */}
-        <div>
-          <Link to="/" className="mr-4 text-xl font-bold hover:text-blue-400">CanchaApp</Link>
-          <Link to="/" className="mr-4 hover:text-blue-400">Canchas</Link>
+      {/* ----- Menú de Navegación Mejorado ----- */}
+      <nav className="flex items-center justify-between bg-gray-900 px-6 py-4 text-white shadow-lg">
+        {/* Lado Izquierdo: Logo y Links */}
+        <div className="flex items-center gap-6">
+          <Link to="/" className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400 hover:from-blue-300 hover:to-green-300 transition-all">
+            CanchaApp
+          </Link>
           
-          {/* Enlace a Mis Reservas - AHORA AQUÍ EN LA NAVEGACIÓN */}
-          {user && (
-            <Link to="/mis-reservas" className="mr-4 hover:text-blue-400">Mis Reservas</Link>
-          )}
+          <div className="hidden md:flex gap-4 text-sm font-medium">
+            <Link to="/" className="hover:text-blue-400 transition-colors">Canchas</Link>
+            
+            {user && (
+              <Link to="/mis-reservas" className="hover:text-blue-400 transition-colors">Mis Reservas</Link>
+            )}
 
-          {user && user.rol === 'admin' && (
-            <Link to="/admin" className="mr-4 rounded bg-yellow-500 px-3 py-1 font-bold text-gray-900 hover:bg-yellow-400">
-              PANEL ADMIN
-            </Link>
-          )}
+            {user && user.rol === 'admin' && (
+              <Link to="/admin" className="text-yellow-400 hover:text-yellow-300 font-bold transition-colors">
+                PANEL ADMIN
+              </Link>
+            )}
+          </div>
         </div>
 
-        {/* Lado Derecho (Condicional) */}
+        {/* Lado Derecho: Perfil de Usuario */}
         <div>
           {user ? (
-            <div className="flex items-center">
-              <span className="mr-4">Hola, {user.sub} ({user.rol})</span>
+            <div className="flex items-center gap-4">
+              {/* Información del Usuario */}
+              <div className="flex flex-col items-end leading-tight">
+                {/* Saludo Personalizado */}
+                <span className="font-bold text-gray-100 capitalize">
+                  Hola, {user.nombre || user.sub}
+                </span>
+                
+                {/* Etiqueta de Rol (Oculta para clientes normales) */}
+                {user.rol !== 'cliente' && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                    user.rol === 'admin' ? 'bg-yellow-500 text-gray-900' : 'bg-gray-600 text-white'
+                  }`}>
+                    {user.rol}
+                  </span>
+                )}
+              </div>
+
+              {/* Botón Salir */}
               <button
                 onClick={handleLogout}
-                className="rounded bg-red-500 px-3 py-1 hover:bg-red-600"
+                className="bg-red-600 hover:bg-red-700 text-white text-sm font-bold py-2 px-4 rounded-lg transition-colors shadow-md"
               >
-                Cerrar Sesión
+                Salir
               </button>
             </div>
           ) : (
-            <Link to="/login" className="rounded bg-blue-500 px-3 py-1 hover:text-blue-600">
-              Login
-            </Link>
+            <div className="flex gap-3">
+               <Link to="/login" className="text-gray-300 hover:text-white font-medium px-3 py-2 transition-colors">
+                Ingresar
+              </Link>
+              <Link to="/register" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md">
+                Registrarse
+              </Link>
+            </div>
           )}
         </div>
       </nav>
 
       {/* ----- Definición de las Rutas ----- */}
       <Routes>
-        {/* --- Rutas Públicas (INCLUYE MIS RESERVAS Y CHECKOUT) --- */}
+        {/* --- Rutas Públicas --- */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/reservar/:id_cancha" element={<ReservaPage />} />
         <Route path="/checkout/:id_horario" element={<CheckoutPage />} /> 
-        
-        {/* AHORA ES UNA RUTA PÚBLICA NORMAL, FUERA DEL BLOQUE ADMIN */}
         <Route path="/mis-reservas" element={<MisReservasPage />} /> 
 
         {/* --- Ruta Protegida de Admin --- */}

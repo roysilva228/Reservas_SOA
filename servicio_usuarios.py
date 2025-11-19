@@ -20,20 +20,18 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # --- NUEVO: Cargar la clave secreta de la API externa ---
-# Leemos la variable de entorno que configuraste en tu terminal
 DECOLECTA_API_KEY = os.environ.get("DECOLECTA_API_KEY")
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 DATABASE_URL = "mysql+pymysql://root:root@localhost:3306/reservas_canchas_soa"
-# ... (El resto del código de DB se queda igual) ...
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# ... (Todos tus modelos de SQLAlchemy y Pydantic se quedan igual) ...
+# --- MODELOS ---
 class Usuario(Base):
-    __tablename__ = "Usuarios" # ... (definición de tabla) ...
+    __tablename__ = "Usuarios"
     id_usuario = Column(Integer, primary_key=True, index=True, autoincrement=True)
     nombre = Column(String(100), nullable=False)
     apellido = Column(String(100), nullable=False)
@@ -65,11 +63,13 @@ class UsuarioPublico(BaseModel):
     class Config:
         from_attributes = True
 
-# ... (Todas tus funciones de Hashing, Tokens y get_db se quedan igual) ...
+# --- FUNCIONES AUXILIARES ---
 def verificar_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
+
 def hashear_password(password):
     return pwd_context.hash(password)
+
 def crear_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
@@ -79,6 +79,7 @@ def crear_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 def get_db():
     db = SessionLocal()
     try:
@@ -92,8 +93,13 @@ app = FastAPI(
     description="API para el registro y autenticación de usuarios."
 )
 
-# --- Configuración de CORS ---
-origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# --- CONFIGURACIÓN DE CORS (CORREGIDO PARA PUERTO 5174) ---
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174", # <-- AGREGADO POR SI VITE CAMBIA DE PUERTO
+    "http://127.0.0.1:5174", # <-- AGREGADO
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -102,14 +108,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ... (Tu @app.on_event("startup") se queda igual) ...
+# --- EVENTO STARTUP ---
 @app.on_event("startup")
 def on_startup():
     print("Iniciando servicio de Usuarios. Intentando conectar a la DB...")
     if not DECOLECTA_API_KEY:
         print("¡¡¡ADVERTENCIA!!!: Variable 'DECOLECTA_API_KEY' no encontrada.")
         print("El endpoint de DNI no funcionará.")
-    # ... (resto de la función startup) ...
+    
     retries = 5
     while retries > 0:
         try:
@@ -125,13 +131,9 @@ def on_startup():
 
 # --- ENDPOINTS DE LA API ---
 
-# --- ¡¡NUEVO ENDPOINT DE DNI!! ---
 @app.get("/usuarios/consultar-dni")
 async def consultar_dni(dni: str):
-    """
-    Endpoint proxy para consultar DNI de forma segura.
-    Llama a la API de Decolecta desde el backend.
-    """
+    """ Endpoint proxy para consultar DNI de forma segura. """
     if not DECOLECTA_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -144,28 +146,21 @@ async def consultar_dni(dni: str):
         "Authorization": f"Bearer {DECOLECTA_API_KEY}"
     }
 
-    # Usamos httpx para hacer la llamada asíncrona
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url_api, headers=headers, timeout=10.0)
-            
-            # Si Decolecta dice "No encontrado" o "Error", lo pasamos al frontend
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=response.status_code,
                     detail=f"Error de la API externa: {response.text}"
                 )
-            
-            # ¡Éxito! Devolvemos el JSON de Decolecta
             return response.json()
-            
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error conectando a la API de DNI: {e}"
             )
 
-# ... (Tu endpoint /usuarios/registrar se queda igual) ...
 @app.post("/usuarios/registrar", response_model=UsuarioPublico, status_code=status.HTTP_201_CREATED)
 def registrar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     db_usuario = db.query(Usuario).filter(Usuario.email == usuario.email).first()
@@ -178,14 +173,24 @@ def registrar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     db.refresh(nuevo_usuario)
     return nuevo_usuario
 
-# ... (Tu endpoint /usuarios/login se queda igual) ...
 @app.post("/usuarios/login", response_model=Token)
 def login_para_access_token(usuario_login: UsuarioLogin, db: Session = Depends(get_db)):
     db_usuario = db.query(Usuario).filter(Usuario.email == usuario_login.email).first()
     if not db_usuario or not verificar_password(usuario_login.password, db_usuario.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email o contraseña incorrectos.", headers={"WWW-Authenticate": "Bearer"})
+    
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = crear_access_token(data={"sub": db_usuario.email, "id": db_usuario.id_usuario, "rol": db_usuario.rol}, expires_delta=access_token_expires)
+    
+    # --- MODIFICACIÓN: Agregamos el nombre al token ---
+    access_token = crear_access_token(
+        data={
+            "sub": db_usuario.email, 
+            "id": db_usuario.id_usuario, 
+            "rol": db_usuario.rol,
+            "nombre": db_usuario.nombre # <-- ESTO ES LO NUEVO
+        }, 
+        expires_delta=access_token_expires
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- FUNCIÓN PARA CORRER LA APP ---

@@ -2,39 +2,35 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext'; // Para saber si estamos logueados
-import { Link } from 'react-router-dom'; // Para futuros enlaces a detalles
+import { useAuth } from '../context/AuthContext'; 
+import { Link } from 'react-router-dom';
+
+// Importa tu imagen local
+import imagenFondo from '../assets/banner2.webp'; // Asegúrate que este nombre coincida con tu archivo
 
 export default function HomePage() {
-  const { user } = useAuth(); // Obtenemos el usuario logueado del contexto
-  const [canchas, setCanchas] = useState([]); // Todas las canchas que cargamos
-  const [sedes, setSedes] = useState([]);     // Todas las sedes para el filtro
-  const [selectedSede, setSelectedSede] = useState(''); // La sede seleccionada por el usuario
-  const [loading, setLoading] = useState(true); // Para mostrar un estado de carga
-  const [error, setError] = useState(null);   // Para manejar errores de la API
+  const { user } = useAuth();
+  const [canchas, setCanchas] = useState([]);
+  const [sedes, setSedes] = useState([]);
+  const [selectedSede, setSelectedSede] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // --- Efecto para cargar sedes y canchas al iniciar ---
   useEffect(() => {
-    // Definimos una URL base para la API de canchas
     const API_URL = 'http://127.0.0.1:8001';
 
     const fetchSedesAndCanchas = async () => {
       setLoading(true);
       setError(null);
       try {
-        // 1. Cargar Sedes
         const sedesResponse = await axios.get(`${API_URL}/sedes/`);
         setSedes(sedesResponse.data);
 
-        // 2. Cargar Canchas (con o sin filtro)
         const params = {};
         if (selectedSede) {
           params.id_sede = selectedSede;
         }
         
-        // --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ---
-        // Añadimos la barra "/" al final de /canchas
-        // y pasamos los 'params' a axios para que él construya la URL
         const canchasResponse = await axios.get(`${API_URL}/canchas/`, { params });
         setCanchas(canchasResponse.data);
 
@@ -47,122 +43,156 @@ export default function HomePage() {
     };
 
     fetchSedesAndCanchas();
-  }, [selectedSede]); // Este efecto se ejecuta cada vez que cambia 'selectedSede'
+  }, [selectedSede]);
 
-  // --- Función para manejar el cambio en el selector de sedes ---
   const handleSedeChange = (e) => {
     setSelectedSede(e.target.value);
   };
 
-  // --- Renderizado del componente ---
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      {/* Sección Hero: El encabezado visual impactante */}
-      <section className="relative h-96 bg-gradient-to-r from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center overflow-hidden">
-        <img
-          src="https://images.unsplash.com/photo-1549727409-f30d52924153?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-          alt="Cancha de deporte iluminada"
-          className="absolute inset-0 h-full w-full object-cover opacity-30"
-        />
-        <div className="relative z-10 text-center px-4">
-          <h1 className="text-5xl md:text-6xl font-extrabold leading-tight tracking-tight drop-shadow-lg animate-fade-in-down">
-            Encuentra tu Cancha Perfecta
+    // 1. CAMBIO: Fondo claro (gray-50) en lugar de oscuro (gray-900)
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans">
+      
+      {/* --- SECCIÓN HERO VIBRANTE --- */}
+      <section 
+        className="relative h-[500px] flex items-center justify-center overflow-hidden bg-cover bg-center"
+        style={{ backgroundImage: `url(${imagenFondo})` }}
+      >
+        {/* 2. CAMBIO: Degradado azulado/negro en lugar de negro plano para dar más 'vida' */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-gray-50"></div>
+        
+        <div className="relative z-10 text-center px-4 mt-10">
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white drop-shadow-xl animate-fade-in-down">
+            Tu deporte, <span className="text-yellow-400">tu cancha.</span>
           </h1>
-          <p className="mt-4 text-xl md:text-2xl font-light drop-shadow-md animate-fade-in-up">
-            Reserva tu espacio para la pasión del deporte.
+          <p className="mt-6 text-xl md:text-2xl font-medium text-white drop-shadow-md animate-fade-in-up max-w-2xl mx-auto">
+            Reserva en segundos y juega por horas. La mejor experiencia deportiva empieza aquí.
           </p>
+          
+          {/* Botón de llamada a la acción en el banner */}
+          {!user && (
+             <Link to="/register" className="mt-8 inline-block bg-green-500 hover:bg-green-600 text-white text-lg font-bold py-3 px-8 rounded-full shadow-lg transform hover:scale-105 transition-all duration-300">
+                ¡Regístrate Gratis!
+             </Link>
+          )}
         </div>
       </section>
 
-      {/* Contenido Principal: Filtros y Galería de Canchas */}
-      <div className="container mx-auto px-4 py-12">
-        {/* Sección de Mensaje de Bienvenida / Estado del Usuario */}
-        {user ? (
-          <p className="mb-8 text-center text-lg md:text-xl font-medium text-blue-300 animate-fade-in">
-            ¡Bienvenido de nuevo, <span className="font-semibold text-blue-100">{user.sub}</span>! Explora las canchas disponibles.
-          </p>
-        ) : (
-          <p className="mb-8 text-center text-lg md:text-xl font-medium text-gray-400 animate-fade-in">
-            Inicia sesión para reservar y disfrutar de todas las funcionalidades.
-            <Link to="/login" className="ml-2 text-blue-400 hover:underline">Ir a Login</Link>
-          </p>
+      {/* Contenido Principal */}
+      <div className="container mx-auto px-4 py-12 -mt-20 relative z-20">
+        
+        {/* Mensaje de bienvenida mejorado */}
+        {user && (
+          <div className="bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-md mb-8 text-center border-l-4 border-blue-500 animate-fade-in">
+            <p className="text-lg text-gray-700">
+              Hola, <span className="font-bold text-blue-600">{user.nombre}</span>. ¡Es un buen día para jugar!
+            </p>
+          </div>
         )}
 
-        {/* Sección de Filtro por Sedes */}
-        <div className="mb-10 text-center animate-slide-in-right">
-          <label htmlFor="sede-select" className="block text-2xl font-semibold mb-4 text-blue-300">
-            Filtrar por Sede:
+        {/* Filtro estilizado (Blanco y limpio) */}
+        <div className="bg-white p-6 rounded-xl shadow-lg mb-10 flex flex-col md:flex-row items-center justify-between border border-gray-100">
+          <label htmlFor="sede-select" className="text-2xl font-bold text-gray-800 mb-4 md:mb-0 flex items-center gap-2">
+            <span className="text-blue-500">📍</span> Explorar Sedes
           </label>
-          <select
-            id="sede-select"
-            className="w-full md:w-1/3 p-3 rounded-lg bg-gray-800 border border-gray-700 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 ease-in-out"
-            value={selectedSede}
-            onChange={handleSedeChange}
-          >
-            <option value="">Todas las Sedes</option>
-            {sedes.map((sede) => (
-              <option key={sede.id_sede} value={sede.id_sede}>
-                {sede.nombre} - {sede.distrito}
-              </option>
-            ))}
-          </select>
+          <div className="w-full md:w-1/3">
+            <select
+              id="sede-select"
+              className="w-full p-3 rounded-lg bg-gray-50 border border-gray-300 text-gray-700 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              value={selectedSede}
+              onChange={handleSedeChange}
+            >
+              <option value="">Todas las Sedes</option>
+              {sedes.map((sede) => (
+                <option key={sede.id_sede} value={sede.id_sede}>
+                  {sede.nombre} - {sede.distrito}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Indicadores de Estado: Carga, Error, Sin Canchas */}
+        {/* Estados de Carga */}
         {loading && (
-          <p className="text-center text-xl text-blue-400 animate-pulse">Cargando canchas...</p>
+          <div className="flex justify-center py-20">
+             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
+          </div>
         )}
         {error && (
-          <p className="text-center text-xl text-red-500">{error}</p>
+          <div className="bg-red-100 text-red-700 p-4 rounded-lg text-center border border-red-200">
+            {error}
+          </div>
         )}
+        
         {!loading && !error && canchas.length === 0 && (
-          <p className="text-center text-xl text-gray-500">
-            No hay canchas disponibles para esta sede.
-          </p>
+          <div className="text-center py-20 bg-white rounded-lg shadow-sm">
+             <p className="text-2xl text-gray-400 font-light">No encontramos canchas en esta sede 😔</p>
+             <button onClick={() => setSelectedSede('')} className="mt-4 text-blue-500 underline hover:text-blue-700">Ver todas las sedes</button>
+          </div>
         )}
 
-        {/* Galería de Canchas (cuando hay datos) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mt-10">
+        {/* Galería de Canchas (Tarjetas Blancas y Brillantes) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {canchas.map((cancha) => (
             <div
               key={cancha.id_cancha}
-              className="bg-gray-800 rounded-xl shadow-lg overflow-hidden transform hover:scale-105 transition-all duration-300 ease-in-out border border-gray-700 hover:border-blue-500 animate-fade-in"
+              // 3. CAMBIO: Tarjetas blancas con sombra suave y borde sutil
+              className="bg-white rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 overflow-hidden group border border-gray-100 flex flex-col"
             >
-              {/* Imagen de la Cancha */}
-              <img
-                src={cancha.url_foto || 'https://via.placeholder.com/400x250/2563eb/e0e7ff?text=Cancha+Placeholder'}
-                alt={`Imagen de ${cancha.nombre}`}
-                className="w-full h-56 object-cover"
-              />
-              <div className="p-6">
-                {/* Nombre y Sede */}
-                <h3 className="text-3xl font-bold mb-2 text-blue-400">{cancha.nombre}</h3>
-                {cancha.sede && (
-                  <p className="text-lg text-gray-400 mb-3">
-                    <i className="fas fa-map-marker-alt mr-2 text-blue-300"></i>
-                    {cancha.sede.nombre} - {cancha.sede.distrito}
-                  </p>
-                )}
-                {/* Detalles de la Cancha */}
-                <p className="text-gray-300 mb-4 text-base leading-relaxed">{cancha.descripcion}</p>
-                <div className="flex items-center justify-between mt-4 border-t border-gray-700 pt-4">
-                  <span className="text-xl font-semibold text-green-400">
-                    S/. {cancha.precio_hora.toFixed(2)} / hora
-                  </span>
-                  <span className="text-sm text-gray-400 flex items-center">
-                    <i className="fas fa-futbol mr-2 text-yellow-400"></i>
-                    {cancha.tipo_superficie}
-                  </span>
+              {/* Contenedor de Imagen con Zoom al hover */}
+              <div className="relative h-56 overflow-hidden">
+                <img
+                  src={cancha.url_foto || 'https://via.placeholder.com/400x250/2563eb/e0e7ff?text=Cancha+Placeholder'}
+                  alt={`Imagen de ${cancha.nombre}`}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                />
+                {/* Etiqueta de tipo de superficie */}
+                <div className="absolute top-4 right-4 bg-black/70 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-md">
+                   {cancha.tipo_superficie || 'General'}
                 </div>
-                {/* Botón de Reserva (solo si está logueado) */}
-               {user && (
-                  <Link
-                    to={`/reservar/${cancha.id_cancha}`} // <-- ¡LA MAGIA! Enlace dinámico
-                    className="mt-6 block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 ease-in-out transform hover:scale-105"
-                  >
-                    Reservar Ahora
-                  </Link>
-                )}
+              </div>
+
+              <div className="p-6 flex-1 flex flex-col">
+                <div className="mb-4">
+                    <h3 className="text-2xl font-bold text-gray-800 mb-1 group-hover:text-blue-600 transition-colors">
+                        {cancha.nombre}
+                    </h3>
+                    {cancha.sede && (
+                    <p className="text-sm text-gray-500 flex items-center gap-1">
+                        <span className="text-red-500">Environment</span>
+                        {cancha.sede.nombre}
+                    </p>
+                    )}
+                </div>
+                
+                <p className="text-gray-600 text-sm mb-6 line-clamp-3 flex-1">
+                    {cancha.descripcion || "¡Disfruta de un gran partido en nuestras instalaciones de primera calidad!"}
+                </p>
+                
+                <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
+                  <div>
+                     <p className="text-xs text-gray-400 uppercase font-bold tracking-wider">Precio por hora</p>
+                     <span className="text-2xl font-extrabold text-gray-800">
+                        S/. {cancha.precio_hora.toFixed(2)}
+                     </span>
+                  </div>
+                  
+                  {user ? (
+                    <Link
+                      to={`/reservar/${cancha.id_cancha}`}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-blue-500/30 transition-all transform hover:-translate-y-1"
+                    >
+                      Reservar
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/login"
+                      className="text-blue-500 font-semibold hover:text-blue-700 underline decoration-2 underline-offset-4"
+                    >
+                      Inicia sesión
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
           ))}
