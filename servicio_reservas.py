@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date, time, timedelta
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
-DATABASE_URL = "mysql+pymysql://root:root@localhost:3306/reservas_canchas_soa"
+DATABASE_URL = "mysql+pymysql://ut7d9efdtwi5fvc4:w7blhZY331yv2KaH9cb4@b4teebota5hwrrxncdzb-mysql.services.clever-cloud.com:3306/b4teebota5hwrrxncdzb"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -139,12 +139,7 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
 # --- APP ---
 app = FastAPI(title="Servicio de Reservas", description="API para gestionar reservas.")
 
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-]
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
