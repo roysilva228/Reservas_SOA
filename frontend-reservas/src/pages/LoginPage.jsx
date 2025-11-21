@@ -1,10 +1,8 @@
-// src/pages/LoginPage.jsx
-
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-// 1. Importa nuestro hook personalizado
 import { useAuth } from '../context/AuthContext';
+import { API_USUARIOS } from '../config'; // <-- Importamos config
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,7 +10,6 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   
   const navigate = useNavigate();
-  // 2. Trae la función 'login' desde el contexto
   const { login } = useAuth();
 
   const handleSubmit = async (e) => {
@@ -20,18 +17,14 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const response = await axios.post('http://127.0.0.1:8000/usuarios/login', {
+      // Usamos la variable de configuración
+      const response = await axios.post(`${API_USUARIOS}/usuarios/login`, {
         email: email,
         password: password,
       });
 
       const token = response.data.access_token;
-      
-      // 3. ¡Aquí está el cambio!
-      // En lugar de console.log, llamamos a nuestra función global
       login(token);
-
-      // Redirigir al usuario a la página de inicio
       navigate('/');
 
     } catch (err) {
@@ -44,8 +37,6 @@ export default function LoginPage() {
     }
   };
 
-  // ...el resto del return (el formulario) se queda EXACTAMENTE IGUAL...
-  // (No necesitas copiar esta parte si ya la tienes)
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100">
       <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
@@ -54,7 +45,6 @@ export default function LoginPage() {
         </h2>
         
         <form onSubmit={handleSubmit}>
-          {/* Email */}
           <div className="mb-4">
             <label htmlFor="email" className="mb-2 block text-sm font-medium text-gray-700">
               Email
@@ -68,7 +58,6 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
-          {/* Password */}
           <div className="mb-6">
             <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-700">
               Contraseña
@@ -82,13 +71,11 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {/* Error */}
           {error && (
             <div className="mb-4 rounded-md border border-red-400 bg-red-100 p-3 text-center text-sm text-red-700">
               {error}
             </div>
           )}
-          {/* Botón */}
           <button
             type="submit"
             className="w-full rounded-md bg-blue-600 p-3 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"

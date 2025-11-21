@@ -5,8 +5,10 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext'; 
 import { Link } from 'react-router-dom';
 
-// Importa tu imagen local
-import imagenFondo from '../assets/banner2.webp'; // Asegúrate que este nombre coincida con tu archivo
+// 1. IMPORTAMOS LA CONFIGURACIÓN CENTRALIZADA
+import { API_CANCHAS } from '../config';
+
+import imagenFondo from '../assets/Banner.webp'; 
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -17,13 +19,15 @@ export default function HomePage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const API_URL = 'http://127.0.0.1:8001';
+    // YA NO DEFINIMOS LA URL AQUÍ MANUALMENTE
+    // const API_URL = 'http://127.0.0.1:8001'; <-- ESTO SE VA
 
     const fetchSedesAndCanchas = async () => {
       setLoading(true);
       setError(null);
       try {
-        const sedesResponse = await axios.get(`${API_URL}/sedes/`);
+        // 2. USAMOS LA CONSTANTE IMPORTADA
+        const sedesResponse = await axios.get(`${API_CANCHAS}/sedes/`);
         setSedes(sedesResponse.data);
 
         const params = {};
@@ -31,7 +35,8 @@ export default function HomePage() {
           params.id_sede = selectedSede;
         }
         
-        const canchasResponse = await axios.get(`${API_URL}/canchas/`, { params });
+        // 2. USAMOS LA CONSTANTE IMPORTADA
+        const canchasResponse = await axios.get(`${API_CANCHAS}/canchas/`, { params });
         setCanchas(canchasResponse.data);
 
       } catch (err) {
@@ -50,7 +55,6 @@ export default function HomePage() {
   };
 
   return (
-    // 1. CAMBIO: Fondo claro (gray-50) en lugar de oscuro (gray-900)
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans">
       
       {/* --- SECCIÓN HERO VIBRANTE --- */}
@@ -58,7 +62,6 @@ export default function HomePage() {
         className="relative h-[500px] flex items-center justify-center overflow-hidden bg-cover bg-center"
         style={{ backgroundImage: `url(${imagenFondo})` }}
       >
-        {/* 2. CAMBIO: Degradado azulado/negro en lugar de negro plano para dar más 'vida' */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/20 to-gray-50"></div>
         
         <div className="relative z-10 text-center px-4 mt-10">
@@ -69,7 +72,6 @@ export default function HomePage() {
             Reserva en segundos y juega por horas. La mejor experiencia deportiva empieza aquí.
           </p>
           
-          {/* Botón de llamada a la acción en el banner */}
           {!user && (
              <Link to="/register" className="mt-8 inline-block bg-green-500 hover:bg-green-600 text-white text-lg font-bold py-3 px-8 rounded-full shadow-lg transform hover:scale-105 transition-all duration-300">
                 ¡Regístrate Gratis!
@@ -81,16 +83,14 @@ export default function HomePage() {
       {/* Contenido Principal */}
       <div className="container mx-auto px-4 py-12 -mt-20 relative z-20">
         
-        {/* Mensaje de bienvenida mejorado */}
         {user && (
           <div className="bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-md mb-8 text-center border-l-4 border-blue-500 animate-fade-in">
             <p className="text-lg text-gray-700">
-              Hola, <span className="font-bold text-blue-600">{user.nombre}</span>. ¡Es un buen día para jugar!
+              Hola, <span className="font-bold text-blue-600 capitalize">{user.nombre || 'Campeón'}</span>. ¡Es un buen día para jugar!
             </p>
           </div>
         )}
 
-        {/* Filtro estilizado (Blanco y limpio) */}
         <div className="bg-white p-6 rounded-xl shadow-lg mb-10 flex flex-col md:flex-row items-center justify-between border border-gray-100">
           <label htmlFor="sede-select" className="text-2xl font-bold text-gray-800 mb-4 md:mb-0 flex items-center gap-2">
             <span className="text-blue-500">📍</span> Explorar Sedes
@@ -112,7 +112,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Estados de Carga */}
         {loading && (
           <div className="flex justify-center py-20">
              <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500"></div>
@@ -131,22 +130,18 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Galería de Canchas (Tarjetas Blancas y Brillantes) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {canchas.map((cancha) => (
             <div
               key={cancha.id_cancha}
-              // 3. CAMBIO: Tarjetas blancas con sombra suave y borde sutil
               className="bg-white rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 overflow-hidden group border border-gray-100 flex flex-col"
             >
-              {/* Contenedor de Imagen con Zoom al hover */}
               <div className="relative h-56 overflow-hidden">
                 <img
                   src={cancha.url_foto || 'https://via.placeholder.com/400x250/2563eb/e0e7ff?text=Cancha+Placeholder'}
                   alt={`Imagen de ${cancha.nombre}`}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 />
-                {/* Etiqueta de tipo de superficie */}
                 <div className="absolute top-4 right-4 bg-black/70 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-md">
                    {cancha.tipo_superficie || 'General'}
                 </div>
@@ -159,7 +154,7 @@ export default function HomePage() {
                     </h3>
                     {cancha.sede && (
                     <p className="text-sm text-gray-500 flex items-center gap-1">
-                        <span className="text-red-500">Environment</span>
+                        <span className="text-red-500">Ubicación:</span>
                         {cancha.sede.nombre}
                     </p>
                     )}
