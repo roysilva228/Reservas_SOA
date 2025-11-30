@@ -24,7 +24,13 @@ DECOLECTA_API_KEY = os.environ.get("DECOLECTA_API_KEY")
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 DATABASE_URL = "mysql+pymysql://ut7d9efdtwi5fvc4:w7blhZY331yv2KaH9cb4@b4teebota5hwrrxncdzb-mysql.services.clever-cloud.com:3306/b4teebota5hwrrxncdzb"
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=1,
+    max_overflow=1,
+    pool_timeout=30,
+    pool_recycle=1800
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
