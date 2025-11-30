@@ -2,10 +2,11 @@
 
 # --- IMPORTS ---
 import uvicorn
+import os # Importante para leer las claves de Render
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from sqlalchemy import create_engine, Column, Integer, String, Enum, TIMESTAMP, DECIMAL, DATE, TIME, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from sqlalchemy.ext.declarative import declarative_base
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -13,11 +14,12 @@ from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date, time, timedelta
 
+# --- IMPORTS PARA EMAIL ---
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
-# URL corregida con la 'l' minúscula
 DATABASE_URL = "mysql+pymysql://ut7d9efdtwi5fvc4:w7blhZY331yv2KaH9cb4@b4teebota5hwrrxncdzb-mysql.services.clever-cloud.com:3306/b4teebota5hwrrxncdzb"
 
-# Configuración optimizada para la nube (evita el error de muchas conexiones)
 engine = create_engine(
     DATABASE_URL,
     pool_size=1,
@@ -32,6 +34,20 @@ Base = declarative_base()
 SECRET_KEY = "mi-proyecto-soa-es-genial-12345"
 ALGORITHM = "HS256"
 bearer_scheme = HTTPBearer()
+
+# --- CONFIGURACIÓN DE EMAIL ---
+# Estas variables las tomará de Render (Environment Variables)
+conf = ConnectionConfig(
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "tu_correo@gmail.com"),
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "tu_clave_de_aplicacion"),
+    MAIL_FROM = os.environ.get("MAIL_FROM", "tu_correo@gmail.com"),
+    MAIL_PORT = 587,
+    MAIL_SERVER = "smtp.gmail.com",
+    MAIL_STARTTLS = True,
+    MAIL_SSL_TLS = False,
+    USE_CREDENTIALS = True,
+    VALIDATE_CERTS = True
+)
 
 # --- MODELOS SQLALCHEMY ---
 class Reserva(Base):
@@ -155,11 +171,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- EVENTO DE INICIO (AQUÍ ESTÁ LA CORRECCIÓN) ---
 @app.on_event("startup")
 def on_startup():
     print("Iniciando Servicio de Reservas...")
-    # ESTA LÍNEA CREA LAS TABLAS AUTOMÁTICAMENTE EN LA NUBE
     Base.metadata.create_all(bind=engine)
     print("Tablas verificadas/creadas exitosamente.")
 
@@ -216,8 +230,9 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
 
+# --- AQUI ESTA EL CAMBIO PARA ENVIAR CORREO (ASYNC) ---
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
-def crear_reserva(reserva_in: ReservaCheckout, db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+async def crear_reserva(reserva_in: ReservaCheckout, db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
     try:
         horario = db.query(HorarioDisponible).filter(HorarioDisponible.id_horario == reserva_in.id_horario).with_for_update().first()
         if not horario or (horario.estado != 'en_checkout' and horario.estado != 'disponible'):
@@ -247,6 +262,37 @@ def crear_reserva(reserva_in: ReservaCheckout, db: Session = Depends(get_db), cu
         
         db.commit()
         db.refresh(nueva_reserva)
+
+        # === ENVÍO DE CORREO ===
+        try:
+            html = f"""
+            <h3>¡Hola {current_user.email}!</h3>
+            <p>Tu reserva ha sido registrada con éxito en <b>CanchaApp</b>.</p>
+            <ul>
+                <li><b>Cancha ID:</b> {cancha.id_cancha}</li>
+                <li><b>Fecha:</b> {horario.fecha}</li>
+                <li><b>Hora:</b> {horario.hora_inicio} - {horario.hora_fin}</li>
+                <li><b>Monto:</b> S/. {cancha.precio_hora}</li>
+                <li><b>Estado:</b> {estado_inicial.upper()}</li>
+            </ul>
+            <p>¡Gracias por jugar con nosotros!</p>
+            """
+
+            message = MessageSchema(
+                subject="Confirmación de Reserva - CanchaApp",
+                recipients=[current_user.email], 
+                body=html,
+                subtype=MessageType.html
+            )
+
+            fm = FastMail(conf)
+            await fm.send_message(message)
+            print(f"Correo enviado a {current_user.email}")
+        except Exception as e_mail:
+            # Si el correo falla, NO fallamos la reserva (el usuario ya pagó o reservó)
+            print(f"Error enviando correo: {e_mail}")
+        # =======================
+
         return nueva_reserva
     except Exception as e:
         db.rollback()
