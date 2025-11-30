@@ -9,3 +9,4 @@ fastapi-cors
 email-validator
 python-multipart
 bcrypt==4.0.1
+fastapi-mail
