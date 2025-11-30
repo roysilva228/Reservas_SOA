@@ -1,6 +1,6 @@
 # servicio_reservas.py
 
-# ... (Imports y Configuración de DB igual que antes) ...
+# --- IMPORTS ---
 import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from sqlalchemy import create_engine, Column, Integer, String, Enum, TIMESTAMP, DECIMAL, DATE, TIME, ForeignKey
@@ -14,7 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date, time, timedelta
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
+# URL corregida con la 'l' minúscula
 DATABASE_URL = "mysql+pymysql://ut7d9efdtwi5fvc4:w7blhZY331yv2KaH9cb4@b4teebota5hwrrxncdzb-mysql.services.clever-cloud.com:3306/b4teebota5hwrrxncdzb"
+
+# Configuración optimizada para la nube (evita el error de muchas conexiones)
 engine = create_engine(
     DATABASE_URL,
     pool_size=1,
@@ -77,7 +80,6 @@ class HorarioPublico(BaseModel):
 class ReservaCreate(BaseModel):
     id_horario: int
 
-# --- ¡AQUÍ ESTÁ LA CORRECCIÓN! Agregamos monto_pagado ---
 class ReservaPublica(BaseModel):
     id_reserva: int
     id_usuario_fk: int
@@ -85,10 +87,9 @@ class ReservaPublica(BaseModel):
     fecha_reserva: date
     hora_inicio: time
     estado_reserva: str
-    monto_pagado: float  # <--- ESTO FALTABA
+    monto_pagado: float
     class Config:
         from_attributes = True
-# -------------------------------------------------------
 
 class TokenData(BaseModel):
     id: int
@@ -154,9 +155,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- EVENTO DE INICIO (AQUÍ ESTÁ LA CORRECCIÓN) ---
 @app.on_event("startup")
 def on_startup():
-    print("Iniciando Servicio de Reservas.")
+    print("Iniciando Servicio de Reservas...")
+    # ESTA LÍNEA CREA LAS TABLAS AUTOMÁTICAMENTE EN LA NUBE
+    Base.metadata.create_all(bind=engine)
+    print("Tablas verificadas/creadas exitosamente.")
 
 # --- ENDPOINTS ---
 
