@@ -14,10 +14,8 @@ from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date, time, timedelta
 
-# --- IMPORTS PARA EMAIL (Librería Estándar) ---
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+# --- NUEVOS IMPORTS PARA BREVO (HTTP) ---
+import httpx 
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 DATABASE_URL = "mysql+pymysql://ut7d9efdtwi5fvc4:w7blhZY331yv2KaH9cb4@b4teebota5hwrrxncdzb-mysql.services.clever-cloud.com:3306/b4teebota5hwrrxncdzb"
@@ -147,36 +145,43 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
         )
     return current_user
 
-# --- FUNCIÓN DE ENVÍO DE CORREO EN BACKGROUND ---
-def enviar_correo_background(destinatario: str, asunto: str, html_content: str):
+# --- FUNCIÓN DE ENVÍO DE CORREO CON BREVO (HTTP) ---
+async def enviar_correo_brevo(destinatario: str, asunto: str, html_content: str):
     """
-    Envía un correo usando smtplib estándar en segundo plano.
+    Envía un correo usando la API REST de Brevo (no bloquea puertos).
     """
-    sender_email = os.environ.get("MAIL_USERNAME")
-    sender_password = os.environ.get("MAIL_PASSWORD")
-    
-    if not sender_email or not sender_password:
-        print("❌ Error: Faltan credenciales de correo (MAIL_USERNAME o MAIL_PASSWORD)")
+    url = "https://api.brevo.com/v3/smtp/email"
+    api_key = os.environ.get("BREVO_API_KEY")
+    sender_email = os.environ.get("MAIL_SENDER_EMAIL", "no-reply@canchaapp.com")
+    sender_name = os.environ.get("MAIL_SENDER_NAME", "CanchaApp")
+
+    if not api_key:
+        print("❌ Error: Falta BREVO_API_KEY en variables de entorno")
         return
 
-    # Configuración del mensaje
-    msg = MIMEMultipart()
-    msg['From'] = f"CanchaApp <{sender_email}>"
-    msg['To'] = destinatario
-    msg['Subject'] = asunto
-    msg.attach(MIMEText(html_content, 'html'))
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": destinatario}],
+        "subject": asunto,
+        "htmlContent": html_content
+    }
+
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
 
     try:
-        # Conexión estándar TLS al puerto 587
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        text = msg.as_string()
-        server.sendmail(sender_email, destinatario, text)
-        server.quit()
-        print(f"✅ Correo enviado exitosamente a {destinatario}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            
+        if response.status_code == 201:
+            print(f"✅ Correo enviado con Brevo a {destinatario}")
+        else:
+            print(f"❌ Error Brevo: {response.text}")
     except Exception as e:
-        print(f"❌ Error enviando correo: {e}")
+        print(f"❌ Excepción enviando correo: {e}")
 
 
 # --- APP ---
@@ -250,11 +255,11 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
 
-# --- CREAR RESERVA CON BACKGROUND TASKS ---
+# --- CREAR RESERVA (MODIFICADO PARA BREVO) ---
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
 async def crear_reserva(
     reserva_in: ReservaCheckout, 
-    background_tasks: BackgroundTasks, # <--- Inyectamos BackgroundTasks
+    background_tasks: BackgroundTasks, # Inyectamos BackgroundTasks
     db: Session = Depends(get_db), 
     current_user: TokenData = Depends(get_current_user)
 ):
@@ -288,7 +293,7 @@ async def crear_reserva(
         db.commit()
         db.refresh(nueva_reserva)
 
-        # === PREPARAR Y ENCOLAR CORREO ===
+        # === PREPARAR Y ENCOLAR CORREO (BREVO) ===
         html = f"""
         <h3>¡Hola {current_user.email}!</h3>
         <p>Tu reserva ha sido registrada con éxito en <b>CanchaApp</b>.</p>
@@ -302,9 +307,9 @@ async def crear_reserva(
         <p>¡Gracias por jugar con nosotros!</p>
         """
 
-        # Usamos add_task para enviar el correo DESPUÉS de responder al usuario
+        # Encolamos la tarea en segundo plano
         background_tasks.add_task(
-            enviar_correo_background,
+            enviar_correo_brevo,
             current_user.email,
             "Confirmación de Reserva - CanchaApp",
             html
