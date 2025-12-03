@@ -145,15 +145,16 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
         )
     return current_user
 
-# --- FUNCIÓN DE ENVÍO DE CORREO CON BREVO (HTTP) ---
+# --- FUNCIÓN DE ENVÍO DE CORREO CON BREVO (ACTUALIZADA) ---
 async def enviar_correo_brevo(destinatario: str, asunto: str, html_content: str):
     """
-    Envía un correo usando la API REST de Brevo.
+    Envía un correo usando la API REST de Brevo con el nombre correcto.
     """
     url = "https://api.brevo.com/v3/smtp/email"
     api_key = os.environ.get("BREVO_API_KEY")
-    # Configuración de remitente con la nueva marca
+    # AQUI CAMBIAMOS EL DEFAULT AL NUEVO NOMBRE
     sender_email = os.environ.get("MAIL_SENDER_EMAIL", "no-reply@deportivamas.com")
+    # AQUI ESTA EL CAMBIO DE NOMBRE DEL REMITENTE
     sender_name = os.environ.get("MAIL_SENDER_NAME", "DeportivaMas")
 
     if not api_key:
@@ -256,7 +257,7 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
 
-# --- CREAR RESERVA (CON DISEÑO Y BREVO) ---
+# --- CREAR RESERVA (CON DISEÑO PRO) ---
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
 async def crear_reserva(
     reserva_in: ReservaCheckout, 
@@ -294,7 +295,7 @@ async def crear_reserva(
         db.commit()
         db.refresh(nueva_reserva)
 
-        # === DISEÑO DE BOLETA HTML ===
+        # === NUEVO DISEÑO DE BOLETA HTML (DeportivaMas) ===
         color_estado = "#22c55e" if estado_inicial == 'confirmada' else "#eab308"
         texto_estado = "PAGO EXITOSO" if estado_inicial == 'confirmada' else "PAGO PENDIENTE"
 
@@ -303,40 +304,51 @@ async def crear_reserva(
         <html>
         <head>
         <style>
-            body {{ font-family: 'Arial', sans-serif; background-color: #f3f4f6; padding: 20px; }}
-            .container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
-            .header {{ background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 30px; text-align: center; color: white; }}
-            .logo {{ font-size: 24px; font-weight: bold; margin-bottom: 10px; }}
-            .status-badge {{ background-color: {color_estado}; color: white; padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: bold; display: inline-block; }}
-            .content {{ padding: 30px; }}
-            .greeting {{ font-size: 18px; color: #1f2937; margin-bottom: 20px; text-align: center; }}
-            .details-box {{ background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 25px; }}
-            .row {{ display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px dashed #e5e7eb; padding-bottom: 12px; }}
+            body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6; padding: 40px 20px; }}
+            .container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }}
+            .header {{ background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 40px; text-align: center; color: white; }}
+            .logo {{ font-size: 28px; font-weight: 800; letter-spacing: -1px; margin-bottom: 5px; }}
+            .subtitle {{ font-size: 14px; opacity: 0.9; font-weight: 300; }}
+            .content {{ padding: 40px; }}
+            .greeting {{ font-size: 20px; color: #1f2937; margin-bottom: 10px; text-align: center; font-weight: 600; }}
+            .message {{ text-align: center; color: #6b7280; font-size: 15px; margin-bottom: 30px; line-height: 1.5; }}
+            
+            .ticket {{ background-color: #f9fafb; border: 2px dashed #d1d5db; border-radius: 12px; padding: 25px; position: relative; }}
+            .row {{ display: flex; justify-content: space-between; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #e5e7eb; }}
             .row:last-child {{ border-bottom: none; margin-bottom: 0; padding-bottom: 0; }}
-            .label {{ color: #6b7280; font-size: 14px; }}
-            .value {{ color: #111827; font-weight: 600; font-size: 14px; }}
-            .total-row {{ display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 2px solid #e5e7eb; font-size: 18px; font-weight: 800; color: #111827; }}
-            .footer {{ text-align: center; color: #9ca3af; font-size: 12px; padding: 20px; border-top: 1px solid #e5e7eb; }}
+            .label {{ color: #6b7280; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }}
+            .value {{ color: #111827; font-weight: 700; font-size: 15px; text-align: right; }}
+            
+            .badge {{ display: inline-block; padding: 6px 12px; border-radius: 50px; font-size: 12px; font-weight: 800; text-transform: uppercase; color: white; background-color: {color_estado}; }}
+            
+            .total-section {{ margin-top: 20px; text-align: center; background-color: #eff6ff; padding: 15px; border-radius: 8px; }}
+            .total-label {{ color: #1e40af; font-size: 12px; font-weight: 700; text-transform: uppercase; }}
+            .total-amount {{ color: #1e3a8a; font-size: 28px; font-weight: 800; margin-top: 5px; }}
+            
+            .footer {{ text-align: center; color: #9ca3af; font-size: 12px; padding: 20px; border-top: 1px solid #e5e7eb; background-color: #f9fafb; }}
         </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
                     <div class="logo">⚽ DeportivaMas</div>
-                    <div class="status-badge">{texto_estado}</div>
+                    <div class="subtitle">Tu pasión, tu cancha.</div>
                 </div>
                 <div class="content">
-                    <p class="greeting">¡Hola, <b>{current_user.email}</b>!</p>
-                    <p style="text-align: center; color: #4b5563; margin-bottom: 20px;">Tu reserva ha sido registrada correctamente. Aquí tienes tu comprobante digital.</p>
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <span class="badge">{texto_estado}</span>
+                    </div>
+                    <p class="greeting">¡Hola, {current_user.email.split('@')[0]}!</p>
+                    <p class="message">Tu reserva está lista. Aquí tienes los detalles de tu partido.</p>
                     
-                    <div class="details-box">
+                    <div class="ticket">
                         <div class="row">
                             <span class="label">Código Reserva</span>
                             <span class="value">#{nueva_reserva.id_reserva}</span>
                         </div>
                         <div class="row">
                             <span class="label">Cancha</span>
-                            <span class="value">Cancha #{cancha.id_cancha}</span>
+                            <span class="value">Cancha Principal #{cancha.id_cancha}</span>
                         </div>
                         <div class="row">
                             <span class="label">Fecha</span>
@@ -346,19 +358,16 @@ async def crear_reserva(
                             <span class="label">Horario</span>
                             <span class="value">{horario.hora_inicio} - {horario.hora_fin}</span>
                         </div>
-                        <div class="total-row">
-                            <span>TOTAL</span>
-                            <span style="color: #2563eb;">S/. {cancha.precio_hora}</span>
-                        </div>
                     </div>
                     
-                    <p style="text-align: center; font-size: 14px; color: #6b7280;">
-                        Presenta este correo en la recepción al llegar.
-                    </p>
+                    <div class="total-section">
+                        <div class="total-label">Total a Pagar</div>
+                        <div class="total-amount">S/. {cancha.precio_hora}</div>
+                    </div>
                 </div>
                 <div class="footer">
-                    © 2025 DeportivaMas. Todos los derechos reservados.<br>
-                    ¡Gracias por jugar con nosotros!
+                    © 2025 DeportivaMas. <br>
+                    Presenta este correo en recepción.
                 </div>
             </div>
         </body>
@@ -369,7 +378,7 @@ async def crear_reserva(
         background_tasks.add_task(
             enviar_correo_brevo,
             current_user.email,
-            "Reserva Confirmada - DeportivaMas ⚽",
+            "✅ Reserva Confirmada - DeportivaMas",
             html
         )
         # =================================
