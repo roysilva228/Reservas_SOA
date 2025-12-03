@@ -3,7 +3,7 @@
 # --- IMPORTS ---
 import uvicorn
 import os # Importante para leer las claves de Render
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy import create_engine, Column, Integer, String, Enum, TIMESTAMP, DECIMAL, DATE, TIME, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
 from pydantic import BaseModel, Field, EmailStr
@@ -14,8 +14,10 @@ from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date, time, timedelta
 
-# --- IMPORTS PARA EMAIL ---
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+# --- IMPORTS PARA EMAIL (Librería Estándar) ---
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 DATABASE_URL = "mysql+pymysql://ut7d9efdtwi5fvc4:w7blhZY331yv2KaH9cb4@b4teebota5hwrrxncdzb-mysql.services.clever-cloud.com:3306/b4teebota5hwrrxncdzb"
@@ -34,20 +36,6 @@ Base = declarative_base()
 SECRET_KEY = "mi-proyecto-soa-es-genial-12345"
 ALGORITHM = "HS256"
 bearer_scheme = HTTPBearer()
-
-# --- CONFIGURACIÓN DE EMAIL ---
-# Estas variables las tomará de Render (Environment Variables)
-conf = ConnectionConfig(
-    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "tu_correo@gmail.com"),
-    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "tu_clave_de_aplicacion"),
-    MAIL_FROM = os.environ.get("MAIL_FROM", "tu_correo@gmail.com"),
-    MAIL_PORT = 465,
-    MAIL_SERVER = "smtp.gmail.com",
-    MAIL_STARTTLS = False,
-    MAIL_SSL_TLS = True,
-    USE_CREDENTIALS = True,
-    VALIDATE_CERTS = True
-)
 
 # --- MODELOS SQLALCHEMY ---
 class Reserva(Base):
@@ -159,6 +147,38 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
         )
     return current_user
 
+# --- FUNCIÓN DE ENVÍO DE CORREO EN BACKGROUND ---
+def enviar_correo_background(destinatario: str, asunto: str, html_content: str):
+    """
+    Envía un correo usando smtplib estándar en segundo plano.
+    """
+    sender_email = os.environ.get("MAIL_USERNAME")
+    sender_password = os.environ.get("MAIL_PASSWORD")
+    
+    if not sender_email or not sender_password:
+        print("❌ Error: Faltan credenciales de correo (MAIL_USERNAME o MAIL_PASSWORD)")
+        return
+
+    # Configuración del mensaje
+    msg = MIMEMultipart()
+    msg['From'] = f"CanchaApp <{sender_email}>"
+    msg['To'] = destinatario
+    msg['Subject'] = asunto
+    msg.attach(MIMEText(html_content, 'html'))
+
+    try:
+        # Conexión estándar TLS al puerto 587
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, destinatario, text)
+        server.quit()
+        print(f"✅ Correo enviado exitosamente a {destinatario}")
+    except Exception as e:
+        print(f"❌ Error enviando correo: {e}")
+
+
 # --- APP ---
 app = FastAPI(title="Servicio de Reservas", description="API para gestionar reservas.")
 
@@ -230,9 +250,14 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
 
-# --- AQUI ESTA EL CAMBIO PARA ENVIAR CORREO (ASYNC) ---
+# --- CREAR RESERVA CON BACKGROUND TASKS ---
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
-async def crear_reserva(reserva_in: ReservaCheckout, db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+async def crear_reserva(
+    reserva_in: ReservaCheckout, 
+    background_tasks: BackgroundTasks, # <--- Inyectamos BackgroundTasks
+    db: Session = Depends(get_db), 
+    current_user: TokenData = Depends(get_current_user)
+):
     try:
         horario = db.query(HorarioDisponible).filter(HorarioDisponible.id_horario == reserva_in.id_horario).with_for_update().first()
         if not horario or (horario.estado != 'en_checkout' and horario.estado != 'disponible'):
@@ -263,35 +288,28 @@ async def crear_reserva(reserva_in: ReservaCheckout, db: Session = Depends(get_d
         db.commit()
         db.refresh(nueva_reserva)
 
-        # === ENVÍO DE CORREO ===
-        try:
-            html = f"""
-            <h3>¡Hola {current_user.email}!</h3>
-            <p>Tu reserva ha sido registrada con éxito en <b>CanchaApp</b>.</p>
-            <ul>
-                <li><b>Cancha ID:</b> {cancha.id_cancha}</li>
-                <li><b>Fecha:</b> {horario.fecha}</li>
-                <li><b>Hora:</b> {horario.hora_inicio} - {horario.hora_fin}</li>
-                <li><b>Monto:</b> S/. {cancha.precio_hora}</li>
-                <li><b>Estado:</b> {estado_inicial.upper()}</li>
-            </ul>
-            <p>¡Gracias por jugar con nosotros!</p>
-            """
+        # === PREPARAR Y ENCOLAR CORREO ===
+        html = f"""
+        <h3>¡Hola {current_user.email}!</h3>
+        <p>Tu reserva ha sido registrada con éxito en <b>CanchaApp</b>.</p>
+        <ul>
+            <li><b>Cancha ID:</b> {cancha.id_cancha}</li>
+            <li><b>Fecha:</b> {horario.fecha}</li>
+            <li><b>Hora:</b> {horario.hora_inicio} - {horario.hora_fin}</li>
+            <li><b>Monto:</b> S/. {cancha.precio_hora}</li>
+            <li><b>Estado:</b> {estado_inicial.upper()}</li>
+        </ul>
+        <p>¡Gracias por jugar con nosotros!</p>
+        """
 
-            message = MessageSchema(
-                subject="Confirmación de Reserva - CanchaApp",
-                recipients=[current_user.email], 
-                body=html,
-                subtype=MessageType.html
-            )
-
-            fm = FastMail(conf)
-            await fm.send_message(message)
-            print(f"Correo enviado a {current_user.email}")
-        except Exception as e_mail:
-            # Si el correo falla, NO fallamos la reserva (el usuario ya pagó o reservó)
-            print(f"Error enviando correo: {e_mail}")
-        # =======================
+        # Usamos add_task para enviar el correo DESPUÉS de responder al usuario
+        background_tasks.add_task(
+            enviar_correo_background,
+            current_user.email,
+            "Confirmación de Reserva - CanchaApp",
+            html
+        )
+        # =================================
 
         return nueva_reserva
     except Exception as e:
