@@ -41,10 +41,10 @@ conf = ConnectionConfig(
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "tu_correo@gmail.com"),
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "tu_clave_de_aplicacion"),
     MAIL_FROM = os.environ.get("MAIL_FROM", "tu_correo@gmail.com"),
-    MAIL_PORT = 587,
+    MAIL_PORT = 465,
     MAIL_SERVER = "smtp.gmail.com",
-    MAIL_STARTTLS = True,
-    MAIL_SSL_TLS = False,
+    MAIL_STARTTLS = False,
+    MAIL_SSL_TLS = True,
     USE_CREDENTIALS = True,
     VALIDATE_CERTS = True
 )
