@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { API_RESERVAS } from '../config'; // <-- Importamos config
+import { API_RESERVAS } from '../config';
+// 1. IMPORTAR EL COMPONENTE
+import ReciboModal from '../components/ReciboModal';
 
 export default function MisReservasPage() {
     const { user, token } = useAuth();
@@ -10,6 +12,9 @@ export default function MisReservasPage() {
     const [reservas, setReservas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // 2. ESTADO PARA EL MODAL (Guarda la reserva seleccionada)
+    const [selectedReserva, setSelectedReserva] = useState(null);
 
     useEffect(() => {
         if (!user || !token) {
@@ -19,7 +24,6 @@ export default function MisReservasPage() {
         const fetchReservas = async () => {
             setLoading(true);
             try {
-                // Usamos API_RESERVAS
                 const response = await axios.get(`${API_RESERVAS}/reservas/mi-historial`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -63,13 +67,32 @@ export default function MisReservasPage() {
                                         </div>
                                         <div className="text-right"><p className="text-xs text-gray-400 uppercase font-bold">Pagado</p><p className="text-xl font-extrabold text-gray-900">S/. {reserva.monto_pagado}</p></div>
                                     </div>
-                                    <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center mt-auto"><span className="text-sm text-gray-500">{isConfirmed ? '✅ Pago exitoso' : '⏳ Pago en proceso'}</span><button className="text-blue-600 hover:text-blue-800 text-sm font-semibold">Ver recibo →</button></div>
+                                    
+                                    <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center mt-auto">
+                                        <span className="text-sm text-gray-500">{isConfirmed ? '✅ Pago exitoso' : '⏳ Pago en proceso'}</span>
+                                        
+                                        {/* 3. BOTÓN PARA ABRIR EL MODAL */}
+                                        <button 
+                                            onClick={() => setSelectedReserva(reserva)}
+                                            className="text-blue-600 hover:text-blue-800 text-sm font-semibold flex items-center gap-1 hover:underline"
+                                        >
+                                            Ver recibo →
+                                        </button>
+                                    </div>
                                 </div>
                             );
                         })}
                     </div>
                 )}
             </div>
+
+            {/* 4. RENDERIZAR EL MODAL SI HAY UNA RESERVA SELECCIONADA */}
+            {selectedReserva && (
+                <ReciboModal 
+                    reserva={selectedReserva} 
+                    onClose={() => setSelectedReserva(null)} 
+                />
+            )}
         </div>
     );
 }
