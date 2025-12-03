@@ -2,19 +2,22 @@ import React from 'react';
 import { jsPDF } from "jspdf";
 
 export default function ReciboModal({ reserva, onClose }) {
-  // Si no hay reserva, no mostramos nada
+  // 1. Si no hay reserva, no renderizamos nada (evita pantallas blancas)
   if (!reserva) return null;
 
-  // Validación de seguridad para fechas y horas
-  const fechaSegura = reserva.fecha_reserva || new Date().toISOString();
-  const dateObj = new Date(fechaSegura);
-  const dateString = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const isConfirmed = reserva.estado_reserva === 'confirmada';
+  // 2. VALIDACIONES DE SEGURIDAD (Esto arregla el error "slice")
+  // Si hora_inicio es null, usamos un string vacío "" para que el slice no falle
+  const horaInicio = (reserva.hora_inicio || "00:00").slice(0, 5);
+  const horaFin = (reserva.hora_fin || "00:00").slice(0, 5);
   
-  // Uso de ?. para evitar crashes si el dato viene nulo
-  const horaInicio = reserva.hora_inicio ? reserva.hora_inicio.slice(0,5) : "--:--";
-  const horaFin = reserva.hora_fin ? reserva.hora_fin.slice(0,5) : "--:--";
+  // Validar fecha
+  const fechaTexto = reserva.fecha_reserva || new Date().toISOString();
+  const dateObj = new Date(fechaTexto);
+  const dateString = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  
+  const isConfirmed = reserva.estado_reserva === 'confirmada';
   const monto = reserva.monto_pagado || "0.00";
+  const nombreCancha = reserva.cancha_nombre || `Cancha #${reserva.id_cancha_fk}`;
 
   // --- LÓGICA PARA GENERAR PDF ---
   const handleDownloadPDF = () => {
@@ -49,13 +52,13 @@ export default function ReciboModal({ reserva, onClose }) {
         // Detalles
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(10);
+        
         doc.text("Reserva:", 5, y);
         doc.text(`#${reserva.id_reserva}`, 75, y, { align: "right" });
         y += 7;
 
         doc.text("Cancha:", 5, y);
-        // Validamos si existe el ID de cancha
-        doc.text(`#${reserva.id_cancha_fk || '?' }`, 75, y, { align: "right" }); 
+        doc.text(`${reserva.id_cancha_fk}`, 75, y, { align: "right" }); 
         y += 7;
 
         doc.text("Fecha:", 5, y);
@@ -64,7 +67,7 @@ export default function ReciboModal({ reserva, onClose }) {
         doc.setFontSize(10);
         y += 7;
 
-        doc.text("Hora:", 5, y);
+        doc.text("Horario:", 5, y);
         doc.text(`${horaInicio} - ${horaFin}`, 75, y, { align: "right" });
         y += 10;
 
@@ -89,14 +92,14 @@ export default function ReciboModal({ reserva, onClose }) {
 
         doc.save(`Recibo_Reserva_${reserva.id_reserva}.pdf`);
     } catch (err) {
-        console.error("Error generando PDF", err);
-        alert("Hubo un error al generar el PDF. Revisa la consola.");
+        console.error("Error PDF", err);
+        alert("Error al generar PDF");
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-60 backdrop-blur-sm transition-opacity">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 animate-fade-in-up">
         
         <div className="bg-gradient-to-r from-blue-700 to-blue-500 p-6 text-center relative">
           <button onClick={onClose} className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold">&times;</button>
@@ -124,6 +127,7 @@ export default function ReciboModal({ reserva, onClose }) {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500 text-sm">Horario</span>
+                {/* Aquí usamos las variables seguras que creamos arriba */}
                 <span className="font-bold text-gray-800">{horaInicio} - {horaFin}</span>
               </div>
             </div>
