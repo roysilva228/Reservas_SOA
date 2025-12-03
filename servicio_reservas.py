@@ -2,7 +2,7 @@
 
 # --- IMPORTS ---
 import uvicorn
-import os # Importante para leer las claves de Render
+import os
 from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy import create_engine, Column, Integer, String, Enum, TIMESTAMP, DECIMAL, DATE, TIME, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
@@ -14,7 +14,7 @@ from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, date, time, timedelta
 
-# --- NUEVOS IMPORTS PARA BREVO (HTTP) ---
+# --- IMPORT PARA CONEXIÓN HTTP (BREVO) ---
 import httpx 
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
@@ -148,12 +148,13 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
 # --- FUNCIÓN DE ENVÍO DE CORREO CON BREVO (HTTP) ---
 async def enviar_correo_brevo(destinatario: str, asunto: str, html_content: str):
     """
-    Envía un correo usando la API REST de Brevo (no bloquea puertos).
+    Envía un correo usando la API REST de Brevo.
     """
     url = "https://api.brevo.com/v3/smtp/email"
     api_key = os.environ.get("BREVO_API_KEY")
-    sender_email = os.environ.get("MAIL_SENDER_EMAIL", "no-reply@canchaapp.com")
-    sender_name = os.environ.get("MAIL_SENDER_NAME", "CanchaApp")
+    # Configuración de remitente con la nueva marca
+    sender_email = os.environ.get("MAIL_SENDER_EMAIL", "no-reply@deportivamas.com")
+    sender_name = os.environ.get("MAIL_SENDER_NAME", "DeportivaMas")
 
     if not api_key:
         print("❌ Error: Falta BREVO_API_KEY en variables de entorno")
@@ -255,11 +256,11 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
 
-# --- CREAR RESERVA (MODIFICADO PARA BREVO) ---
+# --- CREAR RESERVA (CON DISEÑO Y BREVO) ---
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
 async def crear_reserva(
     reserva_in: ReservaCheckout, 
-    background_tasks: BackgroundTasks, # Inyectamos BackgroundTasks
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db), 
     current_user: TokenData = Depends(get_current_user)
 ):
@@ -293,25 +294,82 @@ async def crear_reserva(
         db.commit()
         db.refresh(nueva_reserva)
 
-        # === PREPARAR Y ENCOLAR CORREO (BREVO) ===
+        # === DISEÑO DE BOLETA HTML ===
+        color_estado = "#22c55e" if estado_inicial == 'confirmada' else "#eab308"
+        texto_estado = "PAGO EXITOSO" if estado_inicial == 'confirmada' else "PAGO PENDIENTE"
+
         html = f"""
-        <h3>¡Hola {current_user.email}!</h3>
-        <p>Tu reserva ha sido registrada con éxito en <b>CanchaApp</b>.</p>
-        <ul>
-            <li><b>Cancha ID:</b> {cancha.id_cancha}</li>
-            <li><b>Fecha:</b> {horario.fecha}</li>
-            <li><b>Hora:</b> {horario.hora_inicio} - {horario.hora_fin}</li>
-            <li><b>Monto:</b> S/. {cancha.precio_hora}</li>
-            <li><b>Estado:</b> {estado_inicial.upper()}</li>
-        </ul>
-        <p>¡Gracias por jugar con nosotros!</p>
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            body {{ font-family: 'Arial', sans-serif; background-color: #f3f4f6; padding: 20px; }}
+            .container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+            .header {{ background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 30px; text-align: center; color: white; }}
+            .logo {{ font-size: 24px; font-weight: bold; margin-bottom: 10px; }}
+            .status-badge {{ background-color: {color_estado}; color: white; padding: 8px 16px; border-radius: 20px; font-size: 14px; font-weight: bold; display: inline-block; }}
+            .content {{ padding: 30px; }}
+            .greeting {{ font-size: 18px; color: #1f2937; margin-bottom: 20px; text-align: center; }}
+            .details-box {{ background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 25px; }}
+            .row {{ display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px dashed #e5e7eb; padding-bottom: 12px; }}
+            .row:last-child {{ border-bottom: none; margin-bottom: 0; padding-bottom: 0; }}
+            .label {{ color: #6b7280; font-size: 14px; }}
+            .value {{ color: #111827; font-weight: 600; font-size: 14px; }}
+            .total-row {{ display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 2px solid #e5e7eb; font-size: 18px; font-weight: 800; color: #111827; }}
+            .footer {{ text-align: center; color: #9ca3af; font-size: 12px; padding: 20px; border-top: 1px solid #e5e7eb; }}
+        </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="logo">⚽ DeportivaMas</div>
+                    <div class="status-badge">{texto_estado}</div>
+                </div>
+                <div class="content">
+                    <p class="greeting">¡Hola, <b>{current_user.email}</b>!</p>
+                    <p style="text-align: center; color: #4b5563; margin-bottom: 20px;">Tu reserva ha sido registrada correctamente. Aquí tienes tu comprobante digital.</p>
+                    
+                    <div class="details-box">
+                        <div class="row">
+                            <span class="label">Código Reserva</span>
+                            <span class="value">#{nueva_reserva.id_reserva}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Cancha</span>
+                            <span class="value">Cancha #{cancha.id_cancha}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Fecha</span>
+                            <span class="value">{horario.fecha}</span>
+                        </div>
+                        <div class="row">
+                            <span class="label">Horario</span>
+                            <span class="value">{horario.hora_inicio} - {horario.hora_fin}</span>
+                        </div>
+                        <div class="total-row">
+                            <span>TOTAL</span>
+                            <span style="color: #2563eb;">S/. {cancha.precio_hora}</span>
+                        </div>
+                    </div>
+                    
+                    <p style="text-align: center; font-size: 14px; color: #6b7280;">
+                        Presenta este correo en la recepción al llegar.
+                    </p>
+                </div>
+                <div class="footer">
+                    © 2025 DeportivaMas. Todos los derechos reservados.<br>
+                    ¡Gracias por jugar con nosotros!
+                </div>
+            </div>
+        </body>
+        </html>
         """
 
-        # Encolamos la tarea en segundo plano
+        # Encolamos la tarea
         background_tasks.add_task(
             enviar_correo_brevo,
             current_user.email,
-            "Confirmación de Reserva - CanchaApp",
+            "Reserva Confirmada - DeportivaMas ⚽",
             html
         )
         # =================================
