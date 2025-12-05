@@ -9,9 +9,12 @@ export default function RegisterPage() {
   const [apellido, setApellido] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  
   const [loadingDNI, setLoadingDNI] = useState(false);
   const [loadingRegister, setLoadingRegister] = useState(false);
   const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null); // <--- NUEVO ESTADO PARA ALERTA DE ÉXITO
+
   const navigate = useNavigate();
 
   const handleConsultarDNI = async () => {
@@ -40,6 +43,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoadingRegister(true);
     setError(null);
+    setSuccessMsg(null); // Limpiamos mensajes previos
 
     try {
       // Usamos API_USUARIOS
@@ -49,7 +53,15 @@ export default function RegisterPage() {
         email: email,
         password: password,
       });
-      navigate('/login');
+      
+      // --- CAMBIO: ALERTA DE ÉXITO Y REDIRECCIÓN ---
+      setSuccessMsg("¡Registro exitoso! Redirigiendo al login...");
+      
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000); // Espera 2 segundos antes de redirigir
+      // ---------------------------------------------
+
     } catch (err) {
       console.error("Error en el registro:", err);
       if (err.response && err.response.data && err.response.data.detail) {
@@ -66,6 +78,15 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-100">
       <div className="w-full max-w-lg rounded-lg bg-white p-8 shadow-md">
         <h2 className="mb-6 text-center text-3xl font-bold text-gray-900">Crear Cuenta</h2>
+        
+        {/* --- CAMBIO: MOSTRAR ALERTA DE ÉXITO --- */}
+        {successMsg && (
+            <div className="mb-4 p-4 rounded-md bg-green-100 border-l-4 border-green-500 text-green-700 text-center font-bold animate-pulse">
+                {successMsg}
+            </div>
+        )}
+        {/* --------------------------------------- */}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="dni" className="mb-2 block text-sm font-medium text-gray-700">DNI</label>
@@ -97,7 +118,10 @@ export default function RegisterPage() {
             <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-700">Contraseña</label>
             <input type="password" id="password" className="w-full rounded-md border border-gray-300 p-3 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
+          
+          {/* Alerta de Error */}
           {error && <div className="rounded-md border border-red-400 bg-red-100 p-3 text-center text-sm text-red-700">{error}</div>}
+          
           <button type="submit" disabled={loadingRegister} className="w-full rounded-md bg-blue-600 p-3 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50">
             {loadingRegister ? 'Registrando...' : 'Crear Cuenta'}
           </button>
