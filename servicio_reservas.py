@@ -225,12 +225,23 @@ def generar_bloque_horarios(request: GenerarHorariosRequest, db: Session = Depen
             hora_fin_bloque = (datetime.combine(dia_actual, hora_actual) + delta_intervalo).time()
             if hora_fin_bloque > request.hora_fin:
                 break 
-            nuevo_horario = HorarioDisponible(
-                id_cancha_fk=request.id_cancha, fecha=dia_actual, hora_inicio=hora_actual,
-                hora_fin=hora_fin_bloque, estado='disponible'
-            )
-            db.add(nuevo_horario)
-            horarios_creados += 1
+            
+            # --- CORRECCIÓN: VALIDACIÓN ANTI-DUPLICADOS ---
+            existe = db.query(HorarioDisponible).filter(
+                HorarioDisponible.id_cancha_fk == request.id_cancha,
+                HorarioDisponible.fecha == dia_actual,
+                HorarioDisponible.hora_inicio == hora_actual
+            ).first()
+
+            if not existe:
+                nuevo_horario = HorarioDisponible(
+                    id_cancha_fk=request.id_cancha, fecha=dia_actual, hora_inicio=hora_actual,
+                    hora_fin=hora_fin_bloque, estado='disponible'
+                )
+                db.add(nuevo_horario)
+                horarios_creados += 1
+            # ---------------------------------------------
+
             hora_actual = hora_fin_bloque
         dia_actual += delta_dia
 
@@ -239,7 +250,7 @@ def generar_bloque_horarios(request: GenerarHorariosRequest, db: Session = Depen
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
-    return {"detail": f"{horarios_creados} bloques creados."}
+    return {"detail": f"{horarios_creados} bloques nuevos creados (se omitieron duplicados)."}
 
 @app.post("/reservas/bloquear-horario", response_model=HorarioPublico)
 def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
@@ -254,6 +265,26 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
+
+# --- CORRECCIÓN: ENDPOINT PARA LIBERAR HORARIO (Arrepentimiento) ---
+@app.post("/reservas/liberar/{id_horario}")
+def liberar_horario(id_horario: int, db: Session = Depends(get_db)):
+    """
+    Libera un horario que estaba 'en_checkout' y lo vuelve 'disponible'.
+    """
+    horario = db.query(HorarioDisponible).filter(HorarioDisponible.id_horario == id_horario).first()
+    
+    if not horario:
+        raise HTTPException(status_code=404, detail="Horario no encontrado")
+    
+    # Solo liberamos si estaba en proceso de compra.
+    if horario.estado == 'en_checkout':
+        horario.estado = 'disponible'
+        db.commit()
+        return {"message": "Horario liberado correctamente"}
+    
+    return {"message": "El horario no requería liberación"}
+# -------------------------------------------------------------------
 
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
 async def crear_reserva(
