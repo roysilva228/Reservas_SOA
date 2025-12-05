@@ -4,7 +4,7 @@
 import uvicorn
 import os
 from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks
-from sqlalchemy import create_engine, Column, Integer, String, Enum, TIMESTAMP, DECIMAL, DATE, TIME, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Enum, TIMESTAMP, DECIMAL, DATE, TIME, ForeignKey, func
 from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
@@ -145,16 +145,14 @@ async def get_current_admin(current_user: TokenData = Depends(get_current_user))
         )
     return current_user
 
-# --- FUNCIÓN DE ENVÍO DE CORREO CON BREVO (ACTUALIZADA) ---
+# --- FUNCIÓN DE ENVÍO DE CORREO CON BREVO ---
 async def enviar_correo_brevo(destinatario: str, asunto: str, html_content: str):
     """
     Envía un correo usando la API REST de Brevo con el nombre correcto.
     """
     url = "https://api.brevo.com/v3/smtp/email"
     api_key = os.environ.get("BREVO_API_KEY")
-    # AQUI CAMBIAMOS EL DEFAULT AL NUEVO NOMBRE
     sender_email = os.environ.get("MAIL_SENDER_EMAIL", "no-reply@deportivamas.com")
-    # AQUI ESTA EL CAMBIO DE NOMBRE DEL REMITENTE
     sender_name = os.environ.get("MAIL_SENDER_NAME", "DeportivaMas")
 
     if not api_key:
@@ -257,7 +255,6 @@ def bloquear_horario(reserva_in: ReservaCreate, db: Session = Depends(get_db), c
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error: {e}")
 
-# --- CREAR RESERVA (CON DISEÑO PRO) ---
 @app.post("/reservas/crear", response_model=ReservaPublica, status_code=status.HTTP_201_CREATED)
 async def crear_reserva(
     reserva_in: ReservaCheckout, 
@@ -295,7 +292,7 @@ async def crear_reserva(
         db.commit()
         db.refresh(nueva_reserva)
 
-        # === NUEVO DISEÑO DE BOLETA HTML (DeportivaMas) ===
+        # === DISEÑO DE BOLETA HTML ===
         color_estado = "#22c55e" if estado_inicial == 'confirmada' else "#eab308"
         texto_estado = "PAGO EXITOSO" if estado_inicial == 'confirmada' else "PAGO PENDIENTE"
 
@@ -392,6 +389,56 @@ async def crear_reserva(
 def obtener_historial_cliente(db: Session = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
     reservas = db.query(Reserva).filter(Reserva.id_usuario_fk == current_user.id).order_by(Reserva.fecha_creacion.desc()).all()
     return reservas
+
+# --------------------------------------------------------------------------
+# --- NUEVOS ENDPOINTS PARA EL ADMIN (DASHBOARD Y PAGOS) ---
+# --------------------------------------------------------------------------
+
+# 1. ESTADÍSTICAS PARA EL DASHBOARD
+@app.get("/reservas/admin/stats")
+def obtener_estadisticas_dashboard(db: Session = Depends(get_db), admin: TokenData = Depends(get_current_admin)):
+    # Ingresos Totales (Solo confirmadas)
+    total_ingresos = db.query(func.sum(Reserva.monto_pagado)).filter(Reserva.estado_reserva == 'confirmada').scalar() or 0
+    
+    # Reservas Totales
+    total_reservas = db.query(func.count(Reserva.id_reserva)).scalar() or 0
+    
+    # Pagos Pendientes (Dinero por cobrar)
+    por_cobrar = db.query(func.sum(Reserva.monto_pagado)).filter(Reserva.estado_reserva == 'pendiente').scalar() or 0
+    
+    # Hora más popular (Query de agregación)
+    hora_popular_query = db.query(
+        Reserva.hora_inicio, 
+        func.count(Reserva.id_reserva).label('count')
+    ).group_by(Reserva.hora_inicio).order_by(func.count(Reserva.id_reserva).desc()).first()
+    
+    hora_popular = str(hora_popular_query[0]) if hora_popular_query else "N/A"
+
+    return {
+        "ingresos_totales": float(total_ingresos),
+        "total_reservas": total_reservas,
+        "monto_por_cobrar": float(por_cobrar),
+        "hora_punta": hora_popular
+    }
+
+# 2. LISTAR PAGOS PENDIENTES (Solo presenciales)
+@app.get("/reservas/admin/pendientes", response_model=List[ReservaPublica])
+def listar_pagos_pendientes(db: Session = Depends(get_db), admin: TokenData = Depends(get_current_admin)):
+    return db.query(Reserva).filter(Reserva.estado_reserva == 'pendiente').order_by(Reserva.fecha_reserva).all()
+
+# 3. CONFIRMAR PAGO (Admin marca como pagado)
+@app.post("/reservas/admin/confirmar-pago/{id_reserva}")
+def confirmar_pago_manual(id_reserva: int, db: Session = Depends(get_db), admin: TokenData = Depends(get_current_admin)):
+    reserva = db.query(Reserva).filter(Reserva.id_reserva == id_reserva).first()
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    
+    if reserva.estado_reserva == 'confirmada':
+        raise HTTPException(status_code=400, detail="Esta reserva ya está pagada.")
+
+    reserva.estado_reserva = 'confirmada'
+    db.commit()
+    return {"message": f"Pago confirmado para reserva #{id_reserva}"}
 
 if __name__ == "__main__":
     print("Iniciando servidor de FastAPI en http://127.0.0.1:8002")
