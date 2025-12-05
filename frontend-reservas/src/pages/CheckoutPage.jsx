@@ -75,12 +75,17 @@ export default function CheckoutPage() {
     };
 
     // Función para manejar el "Arrepentimiento" (volver atrás)
-    const handleCancel = () => {
-        // Aquí idealmente llamarías a una API para liberar el horario:
-        // axios.post(`${API_RESERVAS}/reservas/liberar/${id_horario}`)...
-        
-        // Por ahora, simplemente regresamos
-        navigate(-1); 
+    const handleCancel = async () => {
+        try {
+            // Intentamos liberar el horario en el backend
+            await axios.post(`${API_RESERVAS}/reservas/liberar/${id_horario}`);
+        } catch (error) {
+            console.error("No se pudo liberar el horario automáticamente", error);
+            // No bloqueamos la navegación si falla, pero logueamos el error
+        } finally {
+            // Regresamos a la pantalla anterior
+            navigate(-1); 
+        }
     };
 
     if (loading || !horarioData) {
