@@ -13,6 +13,7 @@ import DashboardPage from './pages/admin/DashboardPage';
 import GestionarSedesPage from './pages/admin/GestionarSedesPage';
 import GestionarCanchasPage from './pages/admin/GestionarCanchasPage'; 
 import GenerarHorariosPage from './pages/admin/GenerarHorariosPage';
+import ConfirmarPagosPage from './pages/admin/ConfirmarPagosPage'; // <--- IMPORTANTE: Importar la nueva página
 
 import { useAuth } from './context/AuthContext.jsx'; 
 
@@ -108,6 +109,8 @@ function App() {
           <Route path="gestionar-sedes" element={<GestionarSedesPage />} />
           <Route path="gestionar-canchas" element={<GestionarCanchasPage />} />
           <Route path="generar-horarios" element={<GenerarHorariosPage />} />
+          {/* RUTA NUEVA AGREGADA: */}
+          <Route path="confirmar-pagos" element={<ConfirmarPagosPage />} />
         </Route>
       </Routes>
     </div>
